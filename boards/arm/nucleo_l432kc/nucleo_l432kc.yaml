@@ -4,4 +4,10 @@ type: mcu
 arch: arm
 toolchain:
   - zephyr
-  - gccarmemb
+  - gnuarmemb
+ram: 64
+flash: 256
+supported:
+  - nvs
+  - pwm
+  - can

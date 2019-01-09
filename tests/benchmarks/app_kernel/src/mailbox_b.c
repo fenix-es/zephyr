@@ -19,7 +19,7 @@ static struct k_mbox_msg message;
 	    "                |\n", output_file))
 #define PRINT_ONE_RESULT()                                                   \
 	PRINT_F(output_file, "|%11u|%32.3f|%32f|\n", putsize, puttime / 1000.0,\
-	     (1000.0 * putsize) / puttime)
+	     (1000.0 * putsize) / SAFE_DIVISOR(puttime))
 
 #define PRINT_OVERHEAD()                                                     \
 	PRINT_F(output_file,						\
@@ -29,7 +29,7 @@ static struct k_mbox_msg message;
 #define PRINT_XFER_RATE()                                                     \
 	double netto_transfer_rate;                                           \
 	netto_transfer_rate = 1000.0 * \
-		(putsize >> 1) / (puttime - empty_msg_put_time);	\
+		(putsize >> 1) / SAFE_DIVISOR(puttime - empty_msg_put_time);  \
 	PRINT_F(output_file,						\
 	     "| raw transfer rate:     %10.3f MB/sec (without"		\
 	     " overhead)                 |\n", netto_transfer_rate)
@@ -42,7 +42,7 @@ static struct k_mbox_msg message;
 
 #define PRINT_ONE_RESULT()                                                   \
 	PRINT_F(output_file, "|%11u|%32u|%32u|\n", putsize, puttime,	     \
-	     (u32_t)((1000000 * (u64_t)putsize) / puttime))
+	     (u32_t)((1000000 * (u64_t)putsize) / SAFE_DIVISOR(puttime)))
 
 #define PRINT_OVERHEAD()                                                     \
 	PRINT_F(output_file,						\
@@ -53,7 +53,7 @@ static struct k_mbox_msg message;
 	PRINT_F(output_file, "| raw transfer rate:     %10u KB/sec (without" \
 	     " overhead)                 |\n",                               \
 	     (u32_t)(1000000 * (u64_t)(putsize >> 1)                   \
-	     / (puttime - empty_msg_put_time)))
+	     / SAFE_DIVISOR(puttime - empty_msg_put_time)))
 
 #endif
 
@@ -99,13 +99,13 @@ void mailbox_test(void)
 
 	putcount = NR_OF_MBOX_RUNS;
 
-	putsize = 0;
+	putsize = 0U;
 	mailbox_put(putsize, putcount, &puttime);
 	/* waiting for ack */
 	k_msgq_get(&MB_COMM, &getinfo, K_FOREVER);
 	PRINT_ONE_RESULT();
 	empty_msg_put_time = puttime;
-	for (putsize = 8; putsize <= MESSAGE_SIZE; putsize <<= 1) {
+	for (putsize = 8U; putsize <= MESSAGE_SIZE; putsize <<= 1) {
 		mailbox_put(putsize, putcount, &puttime);
 		/* waiting for ack */
 		k_msgq_get(&MB_COMM, &getinfo, K_FOREVER);

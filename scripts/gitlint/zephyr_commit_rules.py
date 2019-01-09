@@ -15,6 +15,23 @@ While every LineRule can be implemented as a CommitRule, it's usually easier and
 that fits your needs.
 """
 
+class BodyMinLineCount(CommitRule):
+    # A rule MUST have a human friendly name
+    name = "body-min-line-count"
+
+    # A rule MUST have an *unique* id, we recommend starting with UC (for User-defined Commit-rule).
+    id = "UC6"
+
+    # A rule MAY have an option_spec if its behavior should be configurable.
+    options_spec = [IntOption('min-line-count', 2, "Minimum body line count excluding Signed-off-by")]
+
+    def validate(self, commit):
+        filtered = [x for x in commit.message.body if not x.lower().startswith("signed-off-by") and x != '']
+        line_count = len(filtered)
+        min_line_count = self.options['min-line-count'].value
+        if line_count < min_line_count:
+            message = "Body has no content, should at least have {} line.".format(min_line_count)
+            return [RuleViolation(self.id, message, line_nr=1)]
 
 class BodyMaxLineCount(CommitRule):
     # A rule MUST have a human friendly name
@@ -49,7 +66,7 @@ class SignedOffBy(CommitRule):
         flags |= re.IGNORECASE
         for line in commit.message.body:
             if line.lower().startswith("signed-off-by"):
-                if not re.search('(^)Signed-off-by: ([-\w.]+) ([-\w.]+) (.*)', line, flags=flags):
+                if not re.search('(^)Signed-off-by: ([-\'\w.]+) ([-\'\w.]+) (.*)', line, flags=flags):
                     return [RuleViolation(self.id, "Signed-off-by: must have a full name", line_nr=1)]
                 else:
                     return
@@ -76,7 +93,7 @@ class TitleStartsWithSubsystem(LineRule):
     def validate(self, title, _commit):
         regex = self.options['regex'].value
         pattern = re.compile(regex, re.UNICODE)
-        violation_message = "Title does not follow <subsystem>: <subject>"
+        violation_message = "Title does not follow [subsystem]: [subject] (and should not start with literal subsys:)"
         if not pattern.search(title):
             return [RuleViolation(self.id, violation_message, title)]
 

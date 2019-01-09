@@ -115,10 +115,12 @@ For mode details please refer to `32F469IDISCOVERY board User Manual`_.
 
 Default Zephyr Peripheral Mapping:
 ----------------------------------
-- UART_3_TX : PB10
-- UART_3_RX : PB11
-- UART_6_TX : PG14
-- UART_6_RX : PG9
+- UART_3 TX/RX : PB10/PB11 (ST-Link Virtual Port Com)
+- UART_6 TX/RX : PG14/PG9 (Arduino Serial)
+- I2C1 SCL/SDA : PB8/PB9 (Arduino I2C)
+- SPI2 SCK/MISO/MOSI : PD3/PB14/PB15 (Arduino SPI)
+- USB DM : PA11
+- USB DP : PA12
 - USER_PB : PA0
 - LD1 : PG6
 - LD2 : PD4
@@ -142,6 +144,10 @@ Default settings are 115200 8N1.
 Programming and Debugging
 *************************
 
+Applications for the ``stm32f469i_disco`` board configuration can be built and
+flashed in the usual way (see :ref:`build_an_application` and
+:ref:`application_run` for more details).
+
 Flashing
 ========
 
@@ -151,27 +157,15 @@ This interface is supported by the openocd version included in Zephyr SDK.
 Flashing an application to STM32F469I-DISCO
 -------------------------------------------
 
-The sample application :ref:`hello_world` is being used in this tutorial:
+First, connect the STM32F469I-DISCO Discovery kit to your host computer using
+the USB port to prepare it for flashing. Then build and flash your application.
 
-.. code-block:: console
+Here is an example for the :ref:`hello_world` application.
 
-   $<zephyr_root_path>/samples/hello_world
-
-To build the Zephyr kernel and application, enter:
-
-.. code-block:: console
-
-   $ cd <zephyr_root_path>
-   $ source zephyr-env.sh
-   $ cd $ZEPHYR_BASE/samples/hello_world/
-   $ make BOARD=stm32f469i_disco
-
-Connect the STM32F469I-DISCO Discovery kit to your host computer using the USB port.
-Then, enter the following command:
-
-.. code-block:: console
-
-   $ make BOARD=stm32f469i_disco flash
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: stm32f469i_disco
+   :goals: build flash
 
 Run a serial host program to connect with your board:
 
@@ -179,7 +173,7 @@ Run a serial host program to connect with your board:
 
    $ minicom -D /dev/ttyACM0
 
-You should see the following message:
+You should see the following message on the console:
 
 .. code-block:: console
 
@@ -189,11 +183,13 @@ You should see the following message:
 Debugging
 =========
 
-Access gdb with the following make command:
+You can debug an application in the usual way.  Here is an example for the
+:ref:`hello_world` application.
 
-.. code-block:: console
-
-   $ make BOARD=stm32f469i_disco debug
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: stm32f469i_disco
+   :goals: debug
 
 
 .. _32F469IDISCOVERY website:

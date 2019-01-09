@@ -1,8 +1,7 @@
 sample:
-  description: TBD
-  name: TBD
+  description: IPM Mailbox
+  name: IPM Mailbox
 tests:
-  - test:
-      build_only: true
-      filter: CONFIG_SOC_QUARK_SE_C1000
-      tags: samples ipm
+  test:
+    tags: ipm
+    platform_whitelist: quark_se_c1000_devboard

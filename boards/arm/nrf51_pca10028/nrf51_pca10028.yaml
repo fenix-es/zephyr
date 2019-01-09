@@ -4,7 +4,13 @@ type: mcu
 arch: arm
 toolchain:
   - zephyr
-  - gccarmemb
+  - gnuarmemb
 ram: 32
 supported:
+  - adc
   - ble
+  - nvs
+testing:
+  default: true
+  ignore_tags:
+    - net

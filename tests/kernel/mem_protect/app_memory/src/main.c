@@ -8,7 +8,15 @@
 #include <tc_util.h>
 #include <linker/linker-defs.h>
 #include <ztest.h>
+#include <kernel_structs.h>
 
+/**
+ * @brief Memory protection tests
+ * @defgroup kernel_memprotect_tests Memory Protection Tests
+ * @ingroup all_tests
+ * @{
+ * @}
+ */
 struct test_struct {
 	int foo;
 	int bar;
@@ -21,7 +29,7 @@ struct test_struct __kernel_bss kernel_bss;
 struct test_struct __kernel_noinit kernel_noinit;
 
 /* Real kernel variable, check it is in the right place */
-extern volatile u64_t _sys_clock_tick_count;
+extern struct z_kernel _kernel;
 
 struct test_struct app_data = {3, 4, NULL};
 struct test_struct app_bss;
@@ -47,6 +55,11 @@ int kernel_loc(void *ptr)
 	return data_loc(__kernel_ram_start, __kernel_ram_end, ptr);
 }
 
+/**
+ * @brief Test to determine the memory bounds
+ *
+ * @ingroup kernel_memprotect_tests
+ */
 void test_app_memory(void)
 {
 	printk("Memory bounds:\n");
@@ -61,7 +74,7 @@ void test_app_memory(void)
 	zassert_true(kernel_loc(&kernel_bss), "not in kernel memory");
 	zassert_true(kernel_loc(&kernel_noinit), "not in kernel memory");
 
-	zassert_true(kernel_loc((void *)&_sys_clock_tick_count),
+	zassert_true(kernel_loc((void *)&_kernel),
 		     "not in kernel memory");
 }
 

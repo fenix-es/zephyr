@@ -42,8 +42,8 @@ static void iwdg_stm32_convert_timeout(u32_t timeout,
 {
 	assert(IS_IWDG_TIMEOUT(timeout));
 
-	u16_t divider = 0;
-	u8_t shift = 0;
+	u16_t divider = 0U;
+	u8_t shift = 0U;
 
 	/* Convert timeout to seconds. */
 	float m_timeout = (float)timeout / 1000000 * LSI_VALUE;
@@ -58,7 +58,7 @@ static void iwdg_stm32_convert_timeout(u32_t timeout,
 	 * defines of LL_IWDG_PRESCALER_XX type.
 	 */
 	*prescaler = --shift;
-	*reload = (uint32_t)(m_timeout / divider) - 1;
+	*reload = (u32_t)(m_timeout / divider) - 1;
 }
 
 static void iwdg_stm32_enable(struct device *dev)
@@ -68,10 +68,12 @@ static void iwdg_stm32_enable(struct device *dev)
 	LL_IWDG_Enable(iwdg);
 }
 
-static void iwdg_stm32_disable(struct device *dev)
+static int iwdg_stm32_disable(struct device *dev)
 {
 	/* watchdog cannot be stopped once started */
 	ARG_UNUSED(dev);
+
+	return 0;
 }
 
 static int iwdg_stm32_set_config(struct device *dev,
@@ -79,8 +81,8 @@ static int iwdg_stm32_set_config(struct device *dev,
 {
 	IWDG_TypeDef *iwdg = IWDG_STM32_STRUCT(dev);
 	u32_t timeout = config->timeout;
-	u32_t prescaler = 0;
-	u32_t reload = 0;
+	u32_t prescaler = 0U;
+	u32_t reload = 0U;
 	u32_t tickstart;
 
 	assert(IS_IWDG_TIMEOUT(timeout));
@@ -143,13 +145,15 @@ static const struct wdt_driver_api iwdg_stm32_api = {
 
 static int iwdg_stm32_init(struct device *dev)
 {
-	IWDG_TypeDef *iwdg = IWDG_STM32_STRUCT(dev);
 	struct wdt_config config;
 
-	config.timeout = CONFIG_IWDG_STM32_TIMEOUT;
+#ifdef CONFIG_IWDG_STM32_START_AT_BOOT
+	IWDG_TypeDef *iwdg = IWDG_STM32_STRUCT(dev);
 
 	LL_IWDG_Enable(iwdg);
+#endif /* CONFIG_IWDG_STM32_START_AT_BOOT */
 
+	config.timeout = CONFIG_IWDG_STM32_TIMEOUT;
 	iwdg_stm32_set_config(dev, &config);
 
 	/*
@@ -169,7 +173,7 @@ static struct iwdg_stm32_data iwdg_stm32_dev_data = {
 	.Instance = IWDG
 };
 
-DEVICE_AND_API_INIT(iwdg_stm32, CONFIG_IWDG_STM32_DEVICE_NAME,
+DEVICE_AND_API_INIT(iwdg_stm32, CONFIG_WDT_0_NAME,
 		    iwdg_stm32_init, &iwdg_stm32_dev_data, NULL,
 		    POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE,
 		    &iwdg_stm32_api);

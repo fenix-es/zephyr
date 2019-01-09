@@ -11,6 +11,7 @@
 
 #include <flash.h>
 #include <misc/util.h>
+#include "flash_priv.h"
 
 #include "qm_flash.h"
 #include "qm_soc_regs.h"
@@ -114,7 +115,7 @@ static int flash_qmsi_write(struct device *dev, off_t addr,
 {
 	qm_flash_t flash = QM_FLASH_0;
 	qm_flash_region_t reg;
-	u32_t data_word = 0, offset = 0, f_addr = 0;
+	u32_t data_word = 0U, offset = 0U, f_addr = 0U;
 
 	if ((!is_aligned_32(len)) || (!is_aligned_32(addr))) {
 		return -EINVAL;
@@ -172,7 +173,7 @@ static int flash_qmsi_erase(struct device *dev, off_t addr, size_t size)
 {
 	qm_flash_t flash = QM_FLASH_0;
 	qm_flash_region_t reg;
-	u32_t page = 0;
+	u32_t page = 0U;
 
 	/* starting address needs to be a 2KB aligned address */
 	if (addr & QM_FLASH_ADDRESS_MASK) {
@@ -253,6 +254,10 @@ static const struct flash_driver_api flash_qmsi_api = {
 	.write = flash_qmsi_write,
 	.erase = flash_qmsi_erase,
 	.write_protection = flash_qmsi_write_protection,
+#if defined(CONFIG_FLASH_PAGE_LAYOUT)
+	.page_layout = (flash_api_pages_layout)
+		       flash_page_layout_not_implemented,
+#endif
 	.write_block_size = 4,
 };
 

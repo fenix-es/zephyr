@@ -2,8 +2,6 @@
   ******************************************************************************
   * @file    stm32f4xx_ll_rtc.h
   * @author  MCD Application Team
-  * @version V1.7.1
-  * @date    14-April-2017
   * @brief   Header file of RTC LL module.
   ******************************************************************************
   * @attention
@@ -105,19 +103,19 @@ typedef struct
 {
   uint32_t HourFormat;   /*!< Specifies the RTC Hours Format.
                               This parameter can be a value of @ref RTC_LL_EC_HOURFORMAT
-                              
+
                               This feature can be modified afterwards using unitary function
                               @ref LL_RTC_SetHourFormat(). */
 
   uint32_t AsynchPrescaler; /*!< Specifies the RTC Asynchronous Predivider value.
                               This parameter must be a number between Min_Data = 0x00 and Max_Data = 0x7F
-                              
+
                               This feature can be modified afterwards using unitary function
                               @ref LL_RTC_SetAsynchPrescaler(). */
 
   uint32_t SynchPrescaler;  /*!< Specifies the RTC Synchronous Predivider value.
                               This parameter must be a number between Min_Data = 0x00 and Max_Data = 0x7FFF
-                              
+
                               This feature can be modified afterwards using unitary function
                               @ref LL_RTC_SetSynchPrescaler(). */
 } LL_RTC_InitTypeDef;
@@ -185,7 +183,7 @@ typedef struct
   uint32_t AlarmMask;            /*!< Specifies the RTC Alarm Masks.
                                       This parameter can be a value of @ref RTC_LL_EC_ALMA_MASK for ALARM A or @ref RTC_LL_EC_ALMB_MASK for ALARM B.
 
-                                      This feature can be modified afterwards using unitary function @ref LL_RTC_ALMA_SetMask() for ALARM A 
+                                      This feature can be modified afterwards using unitary function @ref LL_RTC_ALMA_SetMask() for ALARM A
                                       or @ref LL_RTC_ALMB_SetMask() for ALARM B
                                  */
 
@@ -598,7 +596,7 @@ typedef struct
   * @}
   */
 
-/** @defgroup RTC_LL_EC_CALIB_INSERTPULSE  Calibration pulse insertion 
+/** @defgroup RTC_LL_EC_CALIB_INSERTPULSE  Calibration pulse insertion
   * @{
   */
 #define LL_RTC_CALIB_INSERTPULSE_NONE      0x00000000U           /*!< No RTCCLK pulses are added */
@@ -925,7 +923,7 @@ __STATIC_INLINE void LL_RTC_DisablePushPullMode(RTC_TypeDef* RTCx, uint32_t PinM
 
 /**
   * @brief  Set PC14 and/or PC15 to high level.
-  * @note   Output data configuration is possible if the LSE is disabled and PushPull output is enabled (through @ref LL_RTC_EnablePushPullMode) 
+  * @note   Output data configuration is possible if the LSE is disabled and PushPull output is enabled (through @ref LL_RTC_EnablePushPullMode)
   * @rmtoll TAFCR        PC14VALUE     LL_RTC_SetOutputPin\n
   *         TAFCR        PC15VALUE     LL_RTC_SetOutputPin
   * @param  RTCx RTC Instance
@@ -941,7 +939,7 @@ __STATIC_INLINE void LL_RTC_SetOutputPin(RTC_TypeDef* RTCx, uint32_t PinMask)
 
 /**
   * @brief  Set PC14 and/or PC15 to low level.
-  * @note   Output data configuration is possible if the LSE is disabled and PushPull output is enabled (through @ref LL_RTC_EnablePushPullMode) 
+  * @note   Output data configuration is possible if the LSE is disabled and PushPull output is enabled (through @ref LL_RTC_EnablePushPullMode)
   * @rmtoll TAFCR        PC14VALUE     LL_RTC_ResetOutputPin\n
   *         TAFCR        PC15VALUE     LL_RTC_ResetOutputPin
   * @param  RTCx RTC Instance
@@ -1346,7 +1344,7 @@ __STATIC_INLINE void LL_RTC_TIME_Config(RTC_TypeDef *RTCx, uint32_t Format12_24,
 __STATIC_INLINE uint32_t LL_RTC_TIME_Get(RTC_TypeDef *RTCx)
 {
   register uint32_t temp = 0U;
-  
+
   temp = READ_BIT(RTCx->TR, (RTC_TR_HT | RTC_TR_HU | RTC_TR_MNT | RTC_TR_MNU | RTC_TR_ST | RTC_TR_SU));
   return (uint32_t)((((((temp & RTC_TR_HT) >> RTC_TR_HT_Pos) << 4U) | ((temp & RTC_TR_HU) >> RTC_TR_HU_Pos)) << RTC_OFFSET_HOUR) |  \
                     (((((temp & RTC_TR_MNT) >> RTC_TR_MNT_Pos) << 4U) | ((temp & RTC_TR_MNU) >> RTC_TR_MNU_Pos)) << RTC_OFFSET_MINUTE) | \
@@ -1685,7 +1683,7 @@ __STATIC_INLINE void LL_RTC_DATE_Config(RTC_TypeDef *RTCx, uint32_t WeekDay, uin
 __STATIC_INLINE uint32_t LL_RTC_DATE_Get(RTC_TypeDef *RTCx)
 {
   register uint32_t temp = 0U;
-  
+
   temp = READ_BIT(RTCx->DR, (RTC_DR_WDU | RTC_DR_MT | RTC_DR_MU | RTC_DR_DT | RTC_DR_DU | RTC_DR_YT | RTC_DR_YU));
   return (uint32_t)((((temp & RTC_DR_WDU) >> RTC_DR_WDU_Pos) << RTC_OFFSET_WEEKDAY) | \
                     (((((temp & RTC_DR_DT) >> RTC_DR_DT_Pos) << 4U) | ((temp & RTC_DR_DU) >> RTC_DR_DU_Pos)) << RTC_OFFSET_DAY) | \
@@ -2694,17 +2692,17 @@ __STATIC_INLINE void LL_RTC_TS_DisableOnTamper(RTC_TypeDef *RTCx)
   * @brief  Set timestamp Pin
   * @rmtoll TAFCR       TSINSEL      LL_RTC_TS_SetPin
   * @param  RTCx RTC Instance
-  * @param  TSPin: specifies the RTC TimeStamp Pin.
+  * @param  TSPin specifies the RTC TimeStamp Pin.
   *          This parameter can be one of the following values:
   *            @arg LL_RTC_TimeStampPin_Default: RTC_AF1 is used as RTC TimeStamp.
   *            @arg LL_RTC_TimeStampPin_Pos1: RTC_AF2 is selected as RTC TimeStamp. (*)
-  *            
+  *
   *            (*) value not defined in all devices.
   * @retval None
   */
 __STATIC_INLINE void LL_RTC_TS_SetPin(RTC_TypeDef *RTCx, uint32_t TSPin)
 {
-  MODIFY_REG(RTCx->TAFCR, RTC_TAFCR_TSINSEL , TSPin); 
+  MODIFY_REG(RTCx->TAFCR, RTC_TAFCR_TSINSEL , TSPin);
 }
 
 /**
@@ -2714,7 +2712,7 @@ __STATIC_INLINE void LL_RTC_TS_SetPin(RTC_TypeDef *RTCx, uint32_t TSPin)
   * @retval Returned value can be one of the following values:
   *            @arg LL_RTC_TimeStampPin_Default: RTC_AF1 is used as RTC TimeStamp Pin.
   *            @arg LL_RTC_TimeStampPin_Pos1: RTC_AF2 is selected as RTC TimeStamp Pin. (*)
-  *            
+  *
   *            (*) value not defined in all devices.
   * @retval None
   */
@@ -2738,9 +2736,9 @@ __STATIC_INLINE uint32_t LL_RTC_TS_GetPin(RTC_TypeDef *RTCx)
   *         TAFCR       TAMP2E        LL_RTC_TAMPER_Enable\n
   * @param  RTCx RTC Instance
   * @param  Tamper This parameter can be a combination of the following values:
-  *         @arg @ref LL_RTC_TAMPER_1 
+  *         @arg @ref LL_RTC_TAMPER_1
   *         @arg @ref LL_RTC_TAMPER_2 (*)
-  *         
+  *
   *         (*) value not defined in all devices.
   * @retval None
   */
@@ -2755,9 +2753,9 @@ __STATIC_INLINE void LL_RTC_TAMPER_Enable(RTC_TypeDef *RTCx, uint32_t Tamper)
   *         TAFCR       TAMP2E        LL_RTC_TAMPER_Disable\n
   * @param  RTCx RTC Instance
   * @param  Tamper This parameter can be a combination of the following values:
-  *         @arg @ref LL_RTC_TAMPER_1 
+  *         @arg @ref LL_RTC_TAMPER_1
   *         @arg @ref LL_RTC_TAMPER_2 (*)
-  *         
+  *
   *         (*) value not defined in all devices.
   * @retval None
   */
@@ -2903,9 +2901,9 @@ __STATIC_INLINE uint32_t LL_RTC_TAMPER_GetSamplingFreq(RTC_TypeDef *RTCx)
   *         TAFCR       TAMP2TRG      LL_RTC_TAMPER_EnableActiveLevel\n
   * @param  RTCx RTC Instance
   * @param  Tamper This parameter can be a combination of the following values:
-  *         @arg @ref LL_RTC_TAMPER_ACTIVELEVEL_TAMP1 
+  *         @arg @ref LL_RTC_TAMPER_ACTIVELEVEL_TAMP1
   *         @arg @ref LL_RTC_TAMPER_ACTIVELEVEL_TAMP2 (*)
-  *         
+  *
   *         (*) value not defined in all devices.
   * @retval None
   */
@@ -2920,9 +2918,9 @@ __STATIC_INLINE void LL_RTC_TAMPER_EnableActiveLevel(RTC_TypeDef *RTCx, uint32_t
   *         TAFCR       TAMP2TRG      LL_RTC_TAMPER_DisableActiveLevel\n
   * @param  RTCx RTC Instance
   * @param  Tamper This parameter can be a combination of the following values:
-  *         @arg @ref LL_RTC_TAMPER_ACTIVELEVEL_TAMP1 
+  *         @arg @ref LL_RTC_TAMPER_ACTIVELEVEL_TAMP1
   *         @arg @ref LL_RTC_TAMPER_ACTIVELEVEL_TAMP2 (*)
-  *         
+  *
   *         (*) value not defined in all devices.
   * @retval None
   */
@@ -2935,17 +2933,17 @@ __STATIC_INLINE void LL_RTC_TAMPER_DisableActiveLevel(RTC_TypeDef *RTCx, uint32_
   * @brief  Set Tamper Pin
   * @rmtoll TAFCR       TAMP1INSEL      LL_RTC_TAMPER_SetPin
   * @param  RTCx RTC Instance
-  * @param  TamperPin: specifies the RTC Tamper Pin.
+  * @param  TamperPin specifies the RTC Tamper Pin.
   *          This parameter can be one of the following values:
   *            @arg LL_RTC_TamperPin_Default: RTC_AF1 is used as RTC Tamper.
   *            @arg LL_RTC_TamperPin_Pos1: RTC_AF2 is selected as RTC Tamper. (*)
-  *            
+  *
   *            (*) value not defined in all devices.
   * @retval None
   */
 __STATIC_INLINE void LL_RTC_TAMPER_SetPin(RTC_TypeDef *RTCx, uint32_t TamperPin)
 {
-  MODIFY_REG(RTCx->TAFCR, RTC_TAFCR_TAMP1INSEL , TamperPin); 
+  MODIFY_REG(RTCx->TAFCR, RTC_TAFCR_TAMP1INSEL , TamperPin);
 }
 
 /**
@@ -2955,7 +2953,7 @@ __STATIC_INLINE void LL_RTC_TAMPER_SetPin(RTC_TypeDef *RTCx, uint32_t TamperPin)
   * @retval Returned value can be one of the following values:
   *            @arg LL_RTC_TamperPin_Default: RTC_AF1 is used as RTC Tamper Pin.
   *            @arg LL_RTC_TamperPin_Pos1: RTC_AF2 is selected as RTC Tamper Pin. (*)
-  *            
+  *
   *            (*) value not defined in all devices.
   * @retval None
   */

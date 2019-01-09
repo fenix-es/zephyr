@@ -68,6 +68,8 @@ The frdm_kw41z board configuration supports the following hardware features:
 +-----------+------------+-------------------------------------+
 | I2C       | on-chip    | i2c                                 |
 +-----------+------------+-------------------------------------+
+| SPI       | on-chip    | spi                                 |
++-----------+------------+-------------------------------------+
 | ADC       | on-chip    | adc                                 |
 +-----------+------------+-------------------------------------+
 | UART      | on-chip    | serial port-polling;                |
@@ -114,6 +116,14 @@ currently enabled (PORTA/GPIOA and PORTC/GPIOC) for the FRDM-KW41Z board.
 +-------+-------------+---------------------------+
 | PTC7  | LPUART0_TX  | UART Console              |
 +-------+-------------+---------------------------+
+| PTC16 | SPI0_SCK    | SPI                       |
++-------+-------------+---------------------------+
+| PTC17 | SPI0_SOUT   | SPI                       |
++-------+-------------+---------------------------+
+| PTC18 | SPI0_SIN    | SPI                       |
++-------+-------------+---------------------------+
+| PTC19 | SPI0_PCS0   | SPI                       |
++-------+-------------+---------------------------+
 
 System Clock
 ============
@@ -136,59 +146,61 @@ communication over USB.
 To use the pyOCD tools with OpenSDA, follow the instructions in the
 :ref:`nxp_opensda_pyocd` page using the `DAPLink FRDM-KW41Z Firmware`_. The
 pyOCD tools are not the default for this board, therefore it is necessary to
-set ``OPENSDA_FW=daplink`` explicitly when you invoke ``make flash`` or ``make
-debug``.
+set ``OPENSDA_FW=daplink`` explicitly when using the default flash and debug
+mechanisms.
 
 .. note::
-   pyOCD added support for KW41Z recently and has not yet tagged a release,
-   therefore you must build pyOCD from source based on the current master
-   branch (f21d43d).
+   pyOCD added support for KW41Z after support for this board was added to
+   Zephyr, so you may need to build pyOCD from source based on the current
+   master branch (f21d43d).
 
 To use the Segger J-Link tools with OpenSDA, follow the instructions in the
 :ref:`nxp_opensda_jlink` page using the `Segger J-Link OpenSDA V2.1 Firmware`_.
 The Segger J-Link tools are the default for this board, therefore it is not
-necessary to set ``OPENSDA_FW=jlink`` explicitly when you invoke ``make
-debug``.
+necessary to set ``OPENSDA_FW=jlink`` explicitly in the environment before
+programming and debugging.
+
+With these mechanisms, applications for the ``frdm_kw41z`` board
+configuration can be built and debugged in the usual way (see
+:ref:`build_an_application` and :ref:`application_run` for more
+details).
 
 Flashing
 ========
 
 The Segger J-Link firmware does not support command line flashing, therefore
-the ``make flash`` build target is not supported.
+the usual ``flash`` build system target is not supported.
 
 Debugging
 =========
 
 This example uses the :ref:`hello_world` sample with the
-:ref:`nxp_opensda_jlink` tools. Use the ``make debug`` build target to build
+:ref:`nxp_opensda_jlink` tools. Run the following to build
 your Zephyr application, invoke the J-Link GDB server, attach a GDB client, and
 program your Zephyr application to flash. It will leave you at a gdb prompt.
 
-.. code-block:: console
-
-   $ cd <zephyr_root_path>
-   $ . zephyr-env.sh
-   $ cd samples/hello_world/
-   $ make BOARD=frdm_kw41z DEBUG_SCRIPT=jlink.sh debug
-
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: frdm_kw41z
+   :goals: debug
 
 .. _FRDM-KW41Z Website:
-   http://www.nxp.com/products/microcontrollers-and-processors/more-processors/application-specific-mcus-mpus/bluetooth-low-energy-ble/nxp-freedom-development-kit-for-kinetis-kw41z-31z-21z-mcus:FRDM-KW41Z
+   https://www.nxp.com/products/processors-and-microcontrollers/arm-based-processors-and-mcus/kinetis-cortex-m-mcus/w-serieswireless-conn.m0-plus-m4/freedom-development-kit-for-kinetis-kw41z-31z-21z-mcus:FRDM-KW41Z
 
 .. _FRDM-KW41Z User Guide:
-   http://www.nxp.com/assets/documents/data/en/user-guides/FRDMKW41ZUG.pdf
+   https://www.nxp.com/webapp/Download?colCode=FRDMKW41ZUG
 
 .. _FRDM-KW41Z Schematics:
-   http://www.nxp.com/assets/downloads/data/en/schematics/FRDM-KW41Z-SCH.pdf
+   https://www.nxp.com/webapp/Download?colCode=FRDM-KW41Z-SCH
 
 .. _KW41Z Website:
-   http://www.nxp.com/products/microcontrollers-and-processors/arm-processors/kinetis-cortex-m-mcus/w-series-wireless-m0-plus-m4/kinetis-kw41z-2.4-ghz-dual-mode-ble-and-802.15.4-wireless-radio-microcontroller-mcu-based-on-arm-cortex-m0-plus-core:KW41Z
+   https://www.nxp.com/products/wireless/zigbee/kinetis-kw41z-2.4-ghz-dual-mode-bluetooth-low-energy-and-802.15.4-wireless-radio-microcontroller-mcu-based-on-arm-cortex-m0-plus-core:KW41Z
 
 .. _KW41Z Datasheet:
-   http://www.nxp.com/assets/documents/data/en/data-sheets/MKW41Z512.pdf
+   https://www.nxp.com/docs/en/data-sheet/MKW41Z512.pdf
 
 .. _KW41Z Reference Manual:
-   http://www.nxp.com/assets/documents/data/en/reference-manuals/MKW41Z512RM.pdf
+   https://www.nxp.com/webapp/Download?colCode=MKW41Z512RM
 
 .. _DAPLink FRDM-KW41Z Firmware:
    http://www.nxp.com/assets/downloads/data/en/reference-applications/OpenSDAv2.2_DAPLink_frdmkw41z_rev0241.zip

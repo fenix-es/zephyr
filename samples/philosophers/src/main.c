@@ -76,7 +76,9 @@
 #endif
 #endif
 
+#ifndef SAME_PRIO
 #define SAME_PRIO 0
+#endif
 
 /* end - control behaviour of the demo */
 /***************************************/
@@ -84,7 +86,7 @@
 #define STACK_SIZE 768
 
 /*
- * There are multiple tasks doing printfs and they may conflict.
+ * There are multiple threads doing printfs and they may conflict.
  * Therefore use puts() instead of printf().
  */
 #if defined(CONFIG_STDOUT_CONSOLE)
@@ -139,9 +141,7 @@ static s32_t get_random_delay(int id, int period_in_ms)
 	 * and the current uptime to create some pseudo-randomness. It produces
 	 * a value between 0 and 31.
 	 */
-	k_enable_sys_clock_always_on();
 	s32_t delay = (k_uptime_get_32()/100 * (id + 1)) & 0x1f;
-	k_disable_sys_clock_always_on();
 
 	/* add 1 to not generate a delay of 0 */
 	s32_t ms = (delay + 1) * period_in_ms;
@@ -226,7 +226,10 @@ static void init_objects(void)
 
 static void start_threads(void)
 {
-	/* create two fibers (prios -2/-1) and four tasks: (prios 0-3) */
+	/*
+	 * create two coop. threads (prios -2/-1) and four preemptive threads
+	 * : (prios 0-3)
+	 */
 	for (int i = 0; i < NUM_PHIL; i++) {
 		int prio = new_prio(i);
 
@@ -261,8 +264,9 @@ static void display_demo_description(void)
 void main(void)
 {
 	display_demo_description();
-
+#if CONFIG_TIMESLICING
 	k_sched_time_slice_set(5000, 0);
+#endif
 
 	init_objects();
 	start_threads();

@@ -32,13 +32,13 @@
  */
 
 #define CMSDK_AHB_GPIO0_DEV \
-	((volatile struct gpio_cmsdk_ahb *)CMSDK_AHB_GPIO0)
+	((volatile struct gpio_cmsdk_ahb *)DT_CMSDK_AHB_GPIO0)
 #define CMSDK_AHB_GPIO1_DEV \
-	((volatile struct gpio_cmsdk_ahb *)CMSDK_AHB_GPIO1)
+	((volatile struct gpio_cmsdk_ahb *)DT_CMSDK_AHB_GPIO1)
 #define CMSDK_AHB_GPIO2_DEV \
-	((volatile struct gpio_cmsdk_ahb *)CMSDK_AHB_GPIO2)
+	((volatile struct gpio_cmsdk_ahb *)DT_CMSDK_AHB_GPIO2)
 #define CMSDK_AHB_GPIO3_DEV \
-	((volatile struct gpio_cmsdk_ahb *)CMSDK_AHB_GPIO3)
+	((volatile struct gpio_cmsdk_ahb *)DT_CMSDK_AHB_GPIO3)
 
 /*
  * This is the mapping from the ARM MPS2 AN385 Board pins to GPIO
@@ -117,40 +117,40 @@
  */
 static void arm_mps2_pinmux_defaults(void)
 {
-	u32_t gpio_0 = 0;
-	u32_t gpio_1 = 0;
-	u32_t gpio_2 = 0;
+	u32_t gpio_0 = 0U;
+	u32_t gpio_1 = 0U;
+	u32_t gpio_2 = 0U;
 
 	/* Set GPIO Alternate Functions */
 
 	gpio_0 = (1<<0)   /* Shield 0 UART 3 RXD */
 	       | (1<<4)   /* Shield 0 UART 3 TXD */
-	       | (1<<5)   /* Shield 0 I2C 3 SDL SBCON2 */
-	       | (1<<15)  /* Shield 0 I2C 3 SDA SBCON2 */
-	       | (1<<11)  /* Shield 0 SPI 3 nCS */
-	       | (1<<12)  /* Shield 0 SPI 3 MOSI */
-	       | (1<<13)  /* Shield 0 SPI 3 MISO */
-	       | (1<<14); /* Shield 0 SPI 3 SCK */
+	       | (1<<5)   /* Shield 0 I2C SCL SBCON2 */
+	       | (1<<15)  /* Shield 0 I2C SDA SBCON2 */
+	       | (1<<11)  /* Shield 0 SPI 3 SCK */
+	       | (1<<12)  /* Shield 0 SPI 3 SS */
+	       | (1<<13)  /* Shield 0 SPI 3 MOSI */
+	       | (1<<14); /* Shield 0 SPI 3 MISO */
 
 	CMSDK_AHB_GPIO0_DEV->altfuncset = gpio_0;
 
 	gpio_1 = (1<<10) /* Shield 1 UART 4 RXD */
 	       | (1<<14) /* Shield 1 UART 4 TXD */
-	       | (1<<15) /* Shield 1 I2C 4 SCL */
-	       | (1<<0)  /* ADC SPI_1 nCS */
-	       | (1<<1)  /* ADC SPI_1 MOSI */
-	       | (1<<2)  /* ADC SPI_1 MISO */
-	       | (1<<3)  /* ADC SPI_1 SCK */
+	       | (1<<15) /* Shield 1 I2C SCL SBCON3 */
+	       | (1<<0)  /* ADC SPI 2 SS */
+	       | (1<<1)  /* ADC SPI 2 MISO */
+	       | (1<<2)  /* ADC SPI 2 MOSI */
+	       | (1<<3)  /* ADC SPI 2 SCK */
 	       | (1<<5)  /* USER BUTTON 0 */
 	       | (1<<6); /* USER BUTTON 1 */
 
 	CMSDK_AHB_GPIO1_DEV->altfuncset = gpio_1;
 
-	gpio_2 = (1<<9)   /* Shield 1 I2C 4 SDA */
-	       | (1<<6)   /* Shield 1 I2C 4 SDA */
-	       | (1<<7)   /* Shield 1 I2C 4 SDA */
-	       | (1<<8)   /* Shield 1 I2C 4 SDA */
-	       | (1<<12); /* Shield 1 I2C 4 SDA */
+	gpio_2 = (1<<9)   /* Shield 1 I2C SDA SBCON3 */
+	       | (1<<6)   /* Shield 1 SPI 4 SS */
+	       | (1<<7)   /* Shield 1 SPI 4 MOSI */
+	       | (1<<8)   /* Shield 1 SPI 4 MISO */
+	       | (1<<12); /* Shield 1 SPI 4 SCK */
 
 	CMSDK_AHB_GPIO2_DEV->altfuncset = gpio_2;
 }

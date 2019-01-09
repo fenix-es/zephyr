@@ -17,8 +17,8 @@
  * necessary to instantiate instances of struct k_thread.
  */
 
-#ifndef _kernel_arch_thread__h_
-#define _kernel_arch_thread__h_
+#ifndef ZEPHYR_ARCH_X86_INCLUDE_KERNEL_ARCH_THREAD_H_
+#define ZEPHYR_ARCH_X86_INCLUDE_KERNEL_ARCH_THREAD_H_
 
 /**
  * Floating point register set alignment.
@@ -241,30 +241,25 @@ typedef struct s_preempFloatReg {
 
 struct _thread_arch {
 
-#ifdef CONFIG_GDB_INFO
-	 /* pointer to ESF saved by outermost exception wrapper */
-	void *esf;
-#endif
-
-#if (defined(CONFIG_FP_SHARING) || defined(CONFIG_GDB_INFO))
+#if defined(CONFIG_FP_SHARING)
 	/*
 	 * Nested exception count to maintain setting of EXC_ACTIVE flag across
 	 * outermost exception.  EXC_ACTIVE is used by _Swap() lazy FP
 	 * save/restore and by debug tools.
 	 */
 	unsigned excNestCount; /* nested exception count */
-#endif /* CONFIG_FP_SHARING || CONFIG_GDB_INFO */
+#endif /* CONFIG_FP_SHARING */
 
 	/*
 	 * The location of all floating point related structures/fields MUST be
-	 * located at the end of struct tcs.  This way only the
-	 * fibers/tasks that actually utilize non-integer capabilities need to
+	 * located at the end of struct k_thread.  This way only the
+	 * threads that actually utilize non-integer capabilities need to
 	 * account for the increased memory required for storing FP state when
 	 * sizing stacks.
 	 *
 	 * Given that stacks "grow down" on IA-32, and the TCS is located
 	 * at the start of a thread's "workspace" memory, the stacks of
-	 * fibers/tasks that do not utilize floating point instruction can
+	 * threads that do not utilize floating point instruction can
 	 * effectively consume the memory occupied by the 'tCoopFloatReg' and
 	 * 'tPreempFloatReg' structures without ill effect.
 	 */
@@ -277,4 +272,4 @@ typedef struct _thread_arch _thread_arch_t;
 
 #endif /* _ASMLANGUAGE */
 
-#endif /* _kernel_arch_thread__h_ */
+#endif /* ZEPHYR_ARCH_X86_INCLUDE_KERNEL_ARCH_THREAD_H_ */

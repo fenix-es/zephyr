@@ -107,7 +107,6 @@ static pfunc func_array[] = {
 	/* mem pools */
 	(pfunc)k_mem_pool_alloc,
 	(pfunc)k_mem_pool_free,
-	(pfunc)k_mem_pool_defrag,
 	(pfunc)k_malloc,
 	(pfunc)k_free,
 
@@ -129,13 +128,14 @@ static pfunc func_array[] = {
 	(pfunc)k_yield,
 	(pfunc)k_wakeup,
 	(pfunc)k_current_get,
-	(pfunc)k_thread_cancel,
 	(pfunc)k_thread_abort,
 	(pfunc)k_thread_priority_get,
 	(pfunc)k_thread_priority_set,
 	(pfunc)k_thread_suspend,
 	(pfunc)k_thread_resume,
+#ifdef CONFIG_TIMESLICING
 	(pfunc)k_sched_time_slice_set,
+#endif
 	(pfunc)k_is_in_isr,
 	(pfunc)k_thread_custom_data_set,
 	(pfunc)k_thread_custom_data_get,

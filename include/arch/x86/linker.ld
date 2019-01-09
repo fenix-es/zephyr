@@ -61,14 +61,33 @@
 	#define MMU_PAGE_ALIGN
 #endif
 
+ENTRY(CONFIG_KERNEL_ENTRY)
+
 /* SECTIONS definitions */
 SECTIONS
 	{
+
+#include <linker/rel-sections.ld>
+
 	GROUP_START(ROMABLE_REGION)
+#ifdef CONFIG_REALMODE
+	/* 16-bit sections */
+	. = PHYS_RAM_ADDR;
+
+	SECTION_PROLOGUE(boot, (OPTIONAL),)
+	{
+	*(.boot)
+	. = ALIGN(16);
+	} GROUP_LINK_IN(ROMABLE_REGION)
+#endif
+	. = ALIGN(8);
 
 	_image_rom_start = PHYS_LOAD_ADDR;
+#ifndef CONFIG_REALMODE
 	_image_text_start = PHYS_LOAD_ADDR;
-
+#else
+	_image_text_start = .;
+#endif
 	SECTION_PROLOGUE(_TEXT_SECTION_NAME, (OPTIONAL),)
 	{
 	. = CONFIG_TEXT_SECTION_OFFSET;
@@ -98,13 +117,15 @@ SECTIONS
 	*(.rodata)
 	*(".rodata.*")
 	*(.gnu.linkonce.r.*)
+
+#ifndef CONFIG_DYNAMIC_INTERRUPTS
 	. = ALIGN(8);
 	_idt_base_address = .;
 #ifdef LINKER_PASS2
 	KEEP(*(staticIdt))
 #else
 	. += CONFIG_IDT_NUM_VECTORS * 8;
-#endif
+#endif /* LINKER_PASS2 */
 
 #ifndef CONFIG_X86_FIXED_IRQ_MAPPING
 	. = ALIGN(4);
@@ -114,6 +135,11 @@ SECTIONS
 #else
 	. += CONFIG_MAX_IRQ_LINES;
 #endif
+#endif /* CONFIG_X86_FIXED_IRQ_MAPPING */
+#endif /* CONFIG_DYNAMIC_INTERRUPTS */
+
+#ifdef CONFIG_SOC_RODATA_LD
+#include <soc-rodata.ld>
 #endif
 
 #ifdef CONFIG_CUSTOM_RODATA_LD
@@ -130,7 +156,7 @@ SECTIONS
 	/* Kernel ROM extends to the end of flash. Need to do this to program
 	 * the MMU
 	 */
-	_image_rom_end = _image_rom_start + KB(CONFIG_ROM_SIZE);
+	_image_rom_end = _image_rom_start + KB(DT_ROM_SIZE);
 #else
 	/* ROM ends here, position counter will now be in RAM areas */
 	_image_rom_end = .;
@@ -142,10 +168,24 @@ SECTIONS
 	/* RAMABLE_REGION */
 	GROUP_START(RAMABLE_REGION)
 
+	/* APP SHARED MEMORY REGION */
+	SECTION_PROLOGUE(_APP_SMEM_SECTION_NAME, (OPTIONAL),)
+	{
+		_image_ram_start = .;
+		_app_smem_start = .;
+		APP_SMEM_SECTION()
+		MMU_PAGE_ALIGN
+		_app_smem_end = .;
+	} GROUP_DATA_LINK_IN(RAMABLE_REGION, RAMABLE_REGION)
+
+	_app_smem_size = _app_smem_end - _app_smem_start;
+	_app_smem_rom_start = LOADADDR(_APP_SMEM_SECTION_NAME);
 #ifdef CONFIG_APPLICATION_MEMORY
 	SECTION_DATA_PROLOGUE(_APP_DATA_SECTION_NAME, (OPTIONAL),)
 	{
-		_image_ram_start = .;
+#ifndef CONFIG_XIP
+		MMU_PAGE_ALIGN
+#endif
 		__app_ram_start = .;
 		__app_data_ram_start = .;
 		APP_INPUT_SECTION(.data)
@@ -179,14 +219,13 @@ SECTIONS
 
 	SECTION_PROLOGUE(_BSS_SECTION_NAME, (NOLOAD OPTIONAL),)
 	{
+	MMU_PAGE_ALIGN
+
 	/*
 	 * For performance, BSS section is forced to be both 4 byte aligned and
 	 * a multiple of 4 bytes.
 	 */
 	. = ALIGN(4);
-#ifndef CONFIG_APPLICATION_MEMORY
-	_image_ram_start = .;
-#endif
 	__kernel_ram_start = .;
 	__bss_start = .;
 
@@ -215,6 +254,10 @@ SECTIONS
 	KERNEL_INPUT_SECTION(".noinit.*")
 	*(".kernel_noinit.*")
 
+#ifdef CONFIG_SOC_NOINIT_LD
+#include <soc-noinit.ld>
+#endif
+
 	MMU_PAGE_ALIGN
 
 	} GROUP_DATA_LINK_IN(RAMABLE_REGION, RAMABLE_REGION)
@@ -227,6 +270,38 @@ SECTIONS
 	KERNEL_INPUT_SECTION(.data)
 	KERNEL_INPUT_SECTION(".data.*")
 	*(".kernel.*")
+
+#ifdef CONFIG_DYNAMIC_INTERRUPTS
+	. = ALIGN(8);
+	_idt_base_address = .;
+#ifdef LINKER_PASS2
+	KEEP(*(staticIdt))
+#else
+	. += CONFIG_IDT_NUM_VECTORS * 8;
+#endif /* LINKER_PASS2 */
+
+#ifndef CONFIG_X86_FIXED_IRQ_MAPPING
+	. = ALIGN(4);
+	_irq_to_interrupt_vector = .;
+#ifdef LINKER_PASS2
+	KEEP(*(irq_int_vector_map))
+#else
+	. += CONFIG_MAX_IRQ_LINES;
+#endif /* LINKER_PASS2 */
+#endif /* CONFIG_X86_FIXED_IRQ_MAPPING */
+
+	z_interrupt_vectors_allocated = .;
+#ifdef LINKER_PASS2
+	KEEP(*(irq_vectors_alloc_data))
+#else
+	. += (CONFIG_IDT_NUM_VECTORS + 7) / 8;
+#endif /* LINKER_PASS2 */
+#endif /* CONFIG_DYNAMIC_INTERRUPTS */
+
+
+#ifdef CONFIG_SOC_RWDATA_LD
+#include <soc-rwdata.ld>
+#endif
 
 #ifdef CONFIG_CUSTOM_RWDATA_LD
 /* Located in project source directory */
@@ -241,16 +316,13 @@ SECTIONS
 	KEEP(*(gdt_ram_data))
 #else /* LINKER_PASS2 */
 
-#ifdef CONFIG_X86_STACK_PROTECTION
-    #ifdef CONFIG_X86_USERSPACE
-        #define GDT_NUM_ENTRIES 7
-    #else
-        #define GDT_NUM_ENTRIES	5
-    #endif /* CONFIG_X86_USERSPACE */
-#else /* CONFIG_X86_STACK_PROTECTION */
+#ifdef CONFIG_USERSPACE
+    #define GDT_NUM_ENTRIES 7
+#elif defined(CONFIG_HW_STACK_PROTECTION)
+    #define GDT_NUM_ENTRIES 5
+#else
     #define GDT_NUM_ENTRIES 3
-#endif /* CONFIG_X86_STACK_PROTECTION */
-
+#endif /* CONFIG_X86_USERSPACE */
 	. += GDT_NUM_ENTRIES * 8;
 #endif /* LINKER_PASS2 */
 #endif /* CONFIG_GDT_DYNAMIC */
@@ -282,14 +354,15 @@ SECTIONS
 
 #include <linker/kobject.ld>
 
+	MMU_PAGE_ALIGN
 	__data_ram_end = .;
 
 	/* All unused memory also owned by the kernel for heaps */
-	__kernel_ram_end = PHYS_RAM_ADDR + KB(CONFIG_RAM_SIZE);
+	__kernel_ram_end = PHYS_RAM_ADDR + KB(DT_RAM_SIZE);
 	__kernel_ram_size = __kernel_ram_end - __kernel_ram_start;
 
 	_image_ram_end = .;
-	_image_ram_all = (PHYS_RAM_ADDR + KB(CONFIG_RAM_SIZE)) - _image_ram_start;
+	_image_ram_all = (PHYS_RAM_ADDR + KB(DT_RAM_SIZE)) - _image_ram_start;
 
 	_end = .; /* end of image */
 
@@ -301,18 +374,15 @@ SECTIONS
 	{
 	KEEP(*(.spurIsr))
 	KEEP(*(.spurNoErrIsr))
-	__INT_LIST_START__ = .;
-	LONG((__INT_LIST_END__ - __INT_LIST_START__) / __ISR_LIST_SIZEOF)
 	KEEP(*(.intList))
 	KEEP(*(.gnu.linkonce.intList.*))
-	__INT_LIST_END__ = .;
 	} > IDT_LIST
 
 #ifdef CONFIG_X86_MMU
 	/* Memory management unit*/
 	SECTION_PROLOGUE(mmulist, (OPTIONAL),)
 	{
-	/* get size of the mmu lists needed for gen_mmu.py*/
+	/* get size of the mmu lists needed for gen_mmu_x86.py*/
 	LONG((__MMU_LIST_END__ - __MMU_LIST_START__) / __MMU_REGION_SIZEOF)
 	/* Get the start of mmu tables in data section so that the address
 	 * of the page tables can be calculated.
@@ -341,6 +411,8 @@ SECTIONS
 /* Located in project source directory */
 #include <custom-sections.ld>
 #endif
+
+#include <linker/debug-sections.ld>
 
 	}
 

@@ -46,6 +46,7 @@ config_regex = \
     b"(?P<comment>(^\s*#.*\n)+)" \
     b"(?P<regex>(^[^#].*\n)+)"
 
+
 def config_import_file(filename):
     """
     Imports regular expresions from any file *.conf in the given path,
@@ -53,7 +54,7 @@ def config_import_file(filename):
     """
     try:
         with open(filename, "rb") as f:
-            mm = mmap.mmap(f.fileno(), 0, access = mmap.ACCESS_READ)
+            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
             # That regex basically selects any block of
             # lines that is not a comment block. The
             # finditer() finds all the blocks and selects
@@ -81,6 +82,7 @@ def config_import_file(filename):
         logging.error("E: %s: can't load config file: %s" % (filename, e))
         raise
 
+
 def config_import_path(path):
     """
     Imports regular expresions from any file *.conf in the given path
@@ -95,8 +97,10 @@ def config_import_path(path):
                     continue
                 config_import_file(filename)
     except Exception as e:
-        raise Exception("E: %s: can't load config files: %s %s" % (path,
-                                                                e, traceback.format_exc()))
+        raise Exception(
+            "E: %s: can't load config files: %s %s" %
+            (path, e, traceback.format_exc()))
+
 
 def config_import(paths):
     """
@@ -108,7 +112,7 @@ def config_import(paths):
     _paths = []
     # Go over the list, flush it if the user gave an empty path ("")
     for path in paths:
-        if path == "" or path == None:
+        if path == "" or path is None:
             logging.debug("flushing current config list: %s", _paths)
             _paths = []
         else:
@@ -117,28 +121,29 @@ def config_import(paths):
     for path in _paths:
         config_import_path(path)
 
+
 arg_parser = argparse.ArgumentParser(
-    description = __doc__,
-    formatter_class = argparse.RawDescriptionHelpFormatter)
-arg_parser.add_argument("-v", "--verbosity", action = "count", default = 0,
-                        help = "increase verbosity")
-arg_parser.add_argument("-q", "--quiet", action = "count", default = 0,
-                        help = "decrease verbosity")
-arg_parser.add_argument("-e", "--errors", action = "store", default = None,
-                        help = "file where to store errors")
-arg_parser.add_argument("-w", "--warnings", action = "store", default = None,
-                        help = "file where to store warnings")
-arg_parser.add_argument("-c", "--config-dir", action = "append", nargs = "?",
-                        default = [ ".known-issues/" ],
-                        help = "configuration directory (multiple can be "
+    description=__doc__,
+    formatter_class=argparse.RawDescriptionHelpFormatter)
+arg_parser.add_argument("-v", "--verbosity", action="count", default=0,
+                        help="increase verbosity")
+arg_parser.add_argument("-q", "--quiet", action="count", default=0,
+                        help="decrease verbosity")
+arg_parser.add_argument("-e", "--errors", action="store", default=None,
+                        help="file where to store errors")
+arg_parser.add_argument("-w", "--warnings", action="store", default=None,
+                        help="file where to store warnings")
+arg_parser.add_argument("-c", "--config-dir", action="append", nargs="?",
+                        default=[".known-issues/"],
+                        help="configuration directory (multiple can be "
                         "given; if none given, clears the current list) "
                         "%(default)s")
-arg_parser.add_argument("FILENAMEs", nargs = "+",
-                        help = "files to filter")
+arg_parser.add_argument("FILENAMEs", nargs="+",
+                        help="files to filter")
 args = arg_parser.parse_args()
 
-logging.basicConfig(level = 40 - 10 * (args.verbosity - args.quiet),
-                    format = "%(levelname)s: %(message)s")
+logging.basicConfig(level=40 - 10 * (args.verbosity - args.quiet),
+                    format="%(levelname)s: %(message)s")
 
 path = ".known-issues/"
 logging.debug("Reading configuration from directory `%s`", path)
@@ -156,37 +161,19 @@ else:
     errors = None
 
 def report_error(data):
-    sys.stdout.write(data)
-    if errors:
-        errors.write(data)
-
-def report_warning(data):
-    sys.stderr.write(data)
-    if warnings:
-        warnings.write(data)
-
-if args.warnings:
-    warnings = open(args.warnings, "w")
-else:
-    warnings = None
-if args.errors:
-    errors = open(args.errors, "w")
-else:
-    errors = None
-
-def report_error(data):
     sys.stdout.write(data.decode('utf-8'))
     if errors:
-        errors.write(data)
+        errors.write(data.decode('utf-8'))
+
 
 def report_warning(data):
-    sys.stderr.write(data)
+    sys.stderr.write(data.decode('utf-8'))
     if warnings:
-        warnings.write(data)
+        warnings.write(data.decode('utf-8'))
 
 for filename in args.FILENAMEs:
     if os.stat(filename).st_size == 0:
-       continue  # skip empty log files
+        continue  # skip empty log files
     try:
         with open(filename, "r+b") as f:
             logging.info("%s: filtering", filename)
@@ -198,14 +185,17 @@ for filename in args.FILENAMEs:
                              filename, origin, ex.pattern)
                 for m in re.finditer(ex.pattern, mm, re.MULTILINE):
                     logging.info("%s: %s-%s: match from from %s %s",
-                                  filename, m.start(), m.end(), origin, flags)
+                                 filename, m.start(), m.end(), origin, flags)
                     if 'warning' in flags:
                         exclude_ranges.append((m.start(), m.end(), True))
                     else:
                         exclude_ranges.append((m.start(), m.end(), False))
 
             exclude_ranges = sorted(exclude_ranges, key=lambda r: r[0])
-            logging.warning("%s: ranges excluded: %s", filename, exclude_ranges)
+            logging.warning(
+                "%s: ranges excluded: %s",
+                filename,
+                exclude_ranges)
 
             # Decide what to do with what has been filtered; warnings
             # go to stderr and warnings file, errors to stdout, what
@@ -216,18 +206,18 @@ for filename in args.FILENAMEs:
                 if b > offset:
                     # We have something not caught by a filter, an error
                     logging.info("%s: error range (%d, %d), from %d %dB",
-                                  filename, offset, b, offset, b - offset)
+                                 filename, offset, b, offset, b - offset)
                     report_error(mm.read(b - offset))
                     mm.seek(b)
                 if warning == True:		# A warning, print it
                     mm.seek(b)
                     logging.info("%s: warning range (%d, %d), from %d %dB",
-                                  filename, b, e, offset, e - b)
+                                 filename, b, e, offset, e - b)
                     report_warning(mm.read(e - b))
                 else:				# Exclude, ignore it
                     d = b - offset
                     logging.info("%s: exclude range (%d, %d), from %d %dB",
-                                  filename, b, e, offset, d)
+                                 filename, b, e, offset, d)
                 offset = e
             mm.seek(offset)
             if len(mm) != offset:
@@ -238,3 +228,19 @@ for filename in args.FILENAMEs:
     except Exception as e:
         logging.error("%s: cannot load: %s", filename, e)
         raise
+
+if warnings or errors:
+    if warnings:
+        warnings.flush()
+    if errors:
+        errors.flush()
+    if ((os.path.isfile(args.warnings) and os.path.getsize(args.warnings) > 0) or
+        (os.path.isfile(args.errors) and os.path.getsize(args.errors) > 0)):
+        print("\n\nNew errors/warnings found, please fix them:\n")
+        if args.warnings:
+            print(open(args.warnings, "r").read())
+        if args.errors and (args.errors != args.warnings):
+            print(open(args.errors, "r").read())
+    else:
+        print("\n\nNo new errors/warnings.\n")
+

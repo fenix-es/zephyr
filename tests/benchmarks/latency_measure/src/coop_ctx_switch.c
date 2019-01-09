@@ -5,7 +5,9 @@
  */
 
 /**
- * @file measure context switch time between cooperative threads
+ * @file
+ *
+ * @brief Measure context switch time between cooperative threads
  *
  * This file contains thread (coop) context switch time measurement.
  * The thread starts two cooperative thread. One thread waits on a semaphore. The other,
@@ -26,7 +28,7 @@
 #define STACKSIZE    512
 #endif
 
-/* stack used by the fibers */
+/* stack used by the threads */
 static K_THREAD_STACK_DEFINE(thread_one_stack, STACKSIZE);
 static K_THREAD_STACK_DEFINE(thread_two_stack, STACKSIZE);
 static struct k_thread thread_one_data;
@@ -91,7 +93,7 @@ static void thread_two(void)
 int coop_ctx_switch(void)
 {
 	PRINT_FORMAT(" 6 - Measure average context switch time between threads (coop)");
-	ctx_switch_counter = 0;
+	ctx_switch_counter = 0U;
 	ctx_switch_balancer = 0;
 
 	bench_test_start();

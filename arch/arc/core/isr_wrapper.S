@@ -19,6 +19,7 @@
 #include <sw_isr_table.h>
 #include <kernel_structs.h>
 #include <arch/cpu.h>
+#include <swap_macros.h>
 
 GTEXT(_isr_wrapper)
 GTEXT(_isr_demux)
@@ -120,8 +121,8 @@ registers (to avoid stack accesses). It is possible to register a FIRQ
 handler that operates outside of the kernel, but care must be taken to only
 use instructions that only use the banked registers.
 
-The kernel is able to handle transitions to and from FIRQ, RIRQ and threads
-(fibers/task). The contexts are saved 'lazily': the minimum amount of work is
+The kernel is able to handle transitions to and from FIRQ, RIRQ and threads.
+The contexts are saved 'lazily': the minimum amount of work is
 done upfront, and the rest is done when needed:
 
 o RIRQ
@@ -129,7 +130,7 @@ o RIRQ
   All needed regisers to run C code in the ISR are saved automatically
   on the outgoing thread's stack: loop, status32, pc, and the caller-
   saved GPRs. That stack frame layout is pre-determined. If returning
-  to a fiber, the stack is popped and no registers have to be saved by
+  to a thread, the stack is popped and no registers have to be saved by
   the kernel. If a context switch is required, the callee-saved GPRs
   are then saved in the thread control structure (TCS).
 
@@ -151,7 +152,7 @@ o FIRQ
   During early initialization, the sp in the 2nd register bank is made to
   refer to _firq_stack. This allows for the FIRQ handler to use its own stack.
   GPRs are banked, loop registers are saved in unused callee saved regs upon
-  interrupt entry. If returning to a fiber, loop registers are restored and the
+  interrupt entry. If returning to a thread, loop registers are restored and the
   CPU switches back to bank 0 for the GPRs. If a context switch is
   needed, at this point only are all the registers saved. First, a
   stack frame with the same layout as the automatic RIRQ one is created
@@ -229,6 +230,44 @@ From RIRQ:
  */
 
 SECTION_FUNC(TEXT, _isr_wrapper)
+#ifdef CONFIG_EXECUTION_BENCHMARKING
+	push_s r0
+	push_s blink
+	push_s r13
+	push_s r12
+	push r11
+	push r10
+	push r9
+	push r8
+	push r7
+	push r6
+	push r5
+	push r4
+	push_s r3
+	push_s r2
+	push_s r1
+
+	bl read_timer_start_of_isr
+
+	pop_s r1
+	pop_s r2
+	pop_s r3
+	pop r4
+	pop r5
+	pop r6
+	pop r7
+	pop r8
+	pop r9
+	pop r10
+	pop r11
+	pop_s r12
+	pop_s r13
+	pop_s blink
+	pop_s r0
+
+#endif
+
+#if CONFIG_ARC_FIRQ
 #if CONFIG_RGF_NUM_BANKS == 1
 	st r0,[saved_r0]
 #endif
@@ -286,30 +325,21 @@ rirq_path:
 	mov.nz r2, _rirq_enter
 	j_s [r2]
 #endif
-
-#ifdef CONFIG_KERNEL_EVENT_LOGGER_SLEEP
-GTEXT(_sys_k_event_logger_exit_sleep)
-
-.macro log_sleep_k_event
-	clri r0 /* do not interrupt event logger operations */
-	push_s r0
-	push_s blink
-	jl _sys_k_event_logger_exit_sleep
-	pop_s blink
-	pop_s r0
-	seti r0
-.endm
 #else
-	#define log_sleep_k_event
+
+	mov r3, _rirq_exit
+	mov r2, _rirq_enter
+	j_s [r2]
 #endif
-#if defined(CONFIG_KERNEL_EVENT_LOGGER_INTERRUPT)
-GTEXT(_sys_k_event_logger_interrupt)
+
+#if defined(CONFIG_TRACING)
+GTEXT(z_sys_trace_isr_enter)
 
 .macro log_interrupt_k_event
 	clri r0 /* do not interrupt event logger operations */
 	push_s r0
 	push_s blink
-	jl _sys_k_event_logger_interrupt
+	jl z_sys_trace_isr_enter
 	pop_s blink
 	pop_s r0
 	seti r0
@@ -350,7 +380,6 @@ SECTION_FUNC(TEXT, _isr_demux)
 	/* r0 is available to be stomped here, and exit_tickless_idle uses it */
 	exit_tickless_idle
 	log_interrupt_k_event
-	log_sleep_k_event
 
 	lr r0, [_ARC_V2_ICAUSE]
 	/* handle software triggered interrupt */
@@ -365,6 +394,42 @@ irq_hint_handled:
 	add3 r0, r1, r0   /* table entries are 8-bytes wide */
 
 	ld_s r1, [r0, 4] /* ISR into r1 */
+#ifdef CONFIG_EXECUTION_BENCHMARKING
+	push_s r0
+	push_s blink
+	push_s r13
+	push_s r12
+	push r11
+	push r10
+	push r9
+	push r8
+	push r7
+	push r6
+	push r5
+	push r4
+	push_s r3
+	push_s r2
+	push_s r1
+
+	bl read_timer_end_of_isr
+
+	pop_s r1
+	pop_s r2
+	pop_s r3
+	pop r4
+	pop r5
+	pop r6
+	pop r7
+	pop r8
+	pop r9
+	pop r10
+	pop r11
+	pop_s r12
+	pop_s r13
+	pop_s blink
+	pop_s r0
+
+#endif
 	jl_s.d [r1]
 	ld_s r0, [r0] /* delay slot: ISR parameter into r0  */
 

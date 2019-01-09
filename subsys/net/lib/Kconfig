@@ -6,13 +6,13 @@
 
 menu "Network Protocols"
 
-source "subsys/net/lib/zoap/Kconfig"
-
 source "subsys/net/lib/coap/Kconfig"
 
 source "subsys/net/lib/dns/Kconfig"
 
 source "subsys/net/lib/mqtt/Kconfig"
+
+source "subsys/net/lib/mqtt_sock/Kconfig"
 
 source "subsys/net/lib/http/Kconfig"
 
@@ -20,12 +20,18 @@ source "subsys/net/lib/lwm2m/Kconfig"
 
 source "subsys/net/lib/sntp/Kconfig"
 
+source "subsys/net/lib/websocket/Kconfig"
+
 endmenu
 
-menu "Network Application Support"
+menu "Network Libraries"
+
+source "subsys/net/lib/config/Kconfig"
 
 source "subsys/net/lib/app/Kconfig"
 
 source "subsys/net/lib/sockets/Kconfig"
+
+source "subsys/net/lib/tls_credentials/Kconfig"
 
 endmenu

@@ -17,12 +17,6 @@ repeat this cycle for ever.
 Wiring
 ******
 
-Arduino 101 and Quark D2000 CRB
-===============================
-You will need to connect the LED to ground and PWM0 via
-the shield. You may need a current limiting resistor. See
-your LED datasheet.
-
 Nucleo_F401RE and Nucleo_L476RG
 ===============================
 Connect PWM2(PA0) to LED
@@ -36,14 +30,25 @@ Hexiwear K64
 No special board setup is necessary because there is an on-board RGB LED
 connected to the K64 PWM.
 
+nrf52840_pca10056
+=================
+No special board setup is necessary because there is an on-board LED connected.
+
+Arduino 101 and Quark D2000 CRB
+===============================
+You will need to connect the LED to ground and PWM0 via
+the shield. You may need a current limiting resistor. See
+your LED datasheet.
+
+
 Building and Running
 ********************
 
 This sample can be built for multiple boards, in this example we will build it
 for the arduino_101 board:
 
-.. code-block:: console
-
-   $ cd samples/basic/fade_led
-   $ make BOARD=arduino_101
-   $ make BOARD=arduino_101 flash
+.. zephyr-app-commands::
+   :zephyr-app: samples/basic/fade_led
+   :board: nrf52840_pca10056
+   :goals: build flash
+   :compact:

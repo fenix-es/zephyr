@@ -10,8 +10,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef _DNS_RESOLVE_H
-#define _DNS_RESOLVE_H
+#ifndef ZEPHYR_INCLUDE_NET_DNS_RESOLVE_H_
+#define ZEPHYR_INCLUDE_NET_DNS_RESOLVE_H_
 
 #include <net/net_ip.h>
 #include <net/net_context.h>
@@ -23,6 +23,7 @@ extern "C" {
 /**
  * @brief DNS resolving library
  * @defgroup dns_resolve DNS Resolve Library
+ * @ingroup networking
  * @{
  */
 
@@ -61,6 +62,20 @@ enum dns_query_type {
 #define MDNS_SERVER_COUNT 0
 #endif /* CONFIG_MDNS_RESOLVER */
 
+/* If LLMNR is enabled, then add some extra well known multicast servers to the
+ * server list.
+ */
+#if defined(CONFIG_LLMNR_RESOLVER)
+#if defined(CONFIG_NET_IPV6) && defined(CONFIG_NET_IPV4)
+#define LLMNR_SERVER_COUNT 2
+#else
+#define LLMNR_SERVER_COUNT 1
+#endif /* CONFIG_NET_IPV6 && CONFIG_NET_IPV4 */
+#else
+#define LLMNR_SERVER_COUNT 0
+#endif /* CONFIG_MDNS_RESOLVER */
+
+#define DNS_MAX_MCAST_SERVERS (MDNS_SERVER_COUNT + LLMNR_SERVER_COUNT)
 /**
  * Address info struct is passed to callback that gets all the results.
  */
@@ -129,8 +144,11 @@ struct dns_resolve_context {
 		struct net_context *net_ctx;
 
 		/** Is this server mDNS one */
-		bool is_mdns;
-	} servers[CONFIG_DNS_RESOLVER_MAX_SERVERS + MDNS_SERVER_COUNT];
+		u8_t is_mdns : 1;
+
+		/** Is this server LLMNR one */
+		u8_t is_llmnr : 1;
+	} servers[CONFIG_DNS_RESOLVER_MAX_SERVERS + DNS_MAX_MCAST_SERVERS];
 
 	/** This timeout is also used when a buffer is required from the
 	 * buffer pools.
@@ -175,7 +193,8 @@ struct dns_resolve_context {
  * @brief Init DNS resolving context.
  *
  * @details This function sets the DNS server address and initializes the
- * DNS context that is used by the actual resolver.
+ * DNS context that is used by the actual resolver. DNS server addresses
+ * can be specified either in textual form, or as struct sockaddr (or both).
  * Note that the recommended way to resolve DNS names is to use
  * the dns_get_addr_info() API. In that case user does not need to
  * call dns_resolve_init() as the DNS servers are already setup by the system.
@@ -184,18 +203,22 @@ struct dns_resolve_context {
  * the stack, then the variable needs to be valid for the whole duration of
  * the resolving. Caller does not need to fill the variable beforehand or
  * edit the context afterwards.
- * @param dns_servers DNS server addresses. The array is null terminated.
- * The port number can be given in the string.
+ * @param dns_servers_str DNS server addresses using textual strings. The
+ * array is NULL terminated. The port number can be given in the string.
  * Syntax for the server addresses with or without port numbers:
  *    IPv4        : 10.0.9.1
  *    IPv4 + port : 10.0.9.1:5353
  *    IPv6        : 2001:db8::22:42
  *    IPv6 + port : [2001:db8::22:42]:5353
+ * @param dns_servers_sa DNS server addresses as struct sockaddr. The array
+ * is NULL terminated. Port numbers are optional in struct sockaddr, the
+ * default will be used if set to 0.
  *
  * @return 0 if ok, <0 if error.
  */
 int dns_resolve_init(struct dns_resolve_context *ctx,
-		     const char *dns_servers[]);
+		     const char *dns_servers_str[],
+		     const struct sockaddr *dns_servers_sa[]);
 
 /**
  * @brief Close DNS resolving context.
@@ -344,4 +367,4 @@ void dns_init_resolver(void);
 }
 #endif
 
-#endif /* _DNS_RESOLVE_H */
+#endif /* ZEPHYR_INCLUDE_NET_DNS_RESOLVE_H_ */

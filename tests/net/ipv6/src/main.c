@@ -6,6 +6,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <logging/log.h>
+LOG_MODULE_REGISTER(net_test, CONFIG_NET_IPV6_LOG_LEVEL);
+
 #include <zephyr/types.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -13,11 +16,11 @@
 #include <errno.h>
 #include <linker/sections.h>
 
-#include <tc_util.h>
+#include <ztest.h>
 
+#include <net/net_core.h>
 #include <net/net_pkt.h>
 #include <net/net_ip.h>
-#include <net/net_core.h>
 #include <net/ethernet.h>
 
 #include "icmpv6.h"
@@ -36,87 +39,91 @@ static struct in6_addr mcast_addr = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
 /* ICMPv6 NS frame (74 bytes) */
 static const unsigned char icmpv6_ns_invalid[] = {
 /* IPv6 header starts here */
-0x60, 0x00, 0x00, 0x00, 0x00, 0x20, 0x3A, 0xFF,
-0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
-0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+	0x60, 0x00, 0x00, 0x00, 0x00, 0x20, 0x3A, 0xFF,
+	0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+	0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
 /* ICMPv6 NS header starts here */
-0x87, 0x00, 0x7B, 0x9C, 0x60, 0x00, 0x00, 0x00,
+	0x87, 0x00, 0x7B, 0x9C, 0x60, 0x00, 0x00, 0x00,
 /* Target Address */
-0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+	0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
 /* Source link layer address */
-0x01, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0xD8,
+	0x01, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0xD8,
 /* Target link layer address */
-0x02, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0xD7,
+	0x02, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0xD7,
 /* Source link layer address */
-0x01, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0xD6,
+	0x01, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0xD6,
 /* MTU option */
-0x05, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0xD5,
+	0x05, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0xD5,
 };
 
 /* ICMPv6 NS frame (64 bytes) */
 static const unsigned char icmpv6_ns_no_sllao[] = {
 /* IPv6 header starts here */
-0x60, 0x00, 0x00, 0x00, 0x00, 0x18, 0x3A, 0xFF,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+	0x60, 0x00, 0x00, 0x00, 0x00, 0x18, 0x3A, 0xFF,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
 /* ICMPv6 NS header starts here */
-0x87, 0x00, 0x7B, 0x9C, 0x60, 0x00, 0x00, 0x00,
+	0x87, 0x00, 0x7B, 0x9C, 0x60, 0x00, 0x00, 0x00,
 /* Target Address */
-0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+	0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
 };
 
 /* */
 static const unsigned char icmpv6_ra[] = {
 /* IPv6 header starts here */
-0x60, 0x00, 0x00, 0x00, 0x00, 0x40, 0x3a, 0xff,
-0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-0x02, 0x60, 0x97, 0xff, 0xfe, 0x07, 0x69, 0xea,
-0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+	0x60, 0x00, 0x00, 0x00, 0x00, 0x40, 0x3a, 0xff,
+	0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x02, 0x60, 0x97, 0xff, 0xfe, 0x07, 0x69, 0xea,
+	0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
 /* ICMPv6 RA header starts here */
-0x86, 0x00, 0x46, 0x25, 0x40, 0x00, 0x07, 0x08,
-0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01,
+	0x86, 0x00, 0x8b, 0xaa, 0x40, 0x00, 0x07, 0x08,
+	0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01,
 /* SLLAO */
-0x01, 0x01, 0x00, 0x60, 0x97, 0x07, 0x69, 0xea,
+	0x01, 0x01, 0x00, 0x60, 0x97, 0x07, 0x69, 0xea,
 /* MTU */
-0x05, 0x01, 0x00, 0x00, 0x00, 0x00, 0x05, 0xdc,
+	0x05, 0x01, 0x00, 0x00, 0x00, 0x00, 0x05, 0xdc,
 /* Prefix info*/
-0x03, 0x04, 0x40, 0xc0, 0xFF, 0xFF, 0xFF, 0xFF,
-0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00,
-0x3f, 0xfe, 0x05, 0x07, 0x00, 0x00, 0x00, 0x01,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x03, 0x04, 0x40, 0xc0, 0xFF, 0xFF, 0xFF, 0xFF,
+	0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00,
+	0x3f, 0xfe, 0x05, 0x07, 0x00, 0x00, 0x00, 0x01,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
 /* IPv6 hop-by-hop option in the message */
 static const unsigned char ipv6_hbho[] = {
 /* IPv6 header starts here (IPv6 addresses are wrong) */
-0x60, 0x00, 0x00, 0x00, 0x00, 0x36, 0x00, 0x3f, /* `....6.? */
-0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
-0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+	0x60, 0x00, 0x00, 0x00, 0x00, 0x36, 0x00, 0x3f, /* `....6.? */
+	0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+	0x20, 0x01, 0x0D, 0xB8, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
 /* Hop-by-hop option starts here */
-0x11, 0x00,
+	0x11, 0x00,
 /* RPL sub-option starts here */
-0x63, 0x04, 0x80, 0x1e, 0x01, 0x00, /* ..c..... */
+	0x63, 0x04, 0x80, 0x1e, 0x01, 0x00,             /* ..c..... */
 /* UDP header starts here (checksum is "fixed" in this example) */
-0xaa, 0xdc, 0xbf, 0xd7, 0x00, 0x2e, 0xa2, 0x55, /* ......M. */
+	0xaa, 0xdc, 0xbf, 0xd7, 0x00, 0x2e, 0xa2, 0x55, /* ......M. */
 /* User data starts here (38 bytes) */
-0x10, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, /* ........ */
-0x00, 0x00, 0x01, 0x00, 0x00, 0x02, 0x00, 0x02, /* ........ */
-0x00, 0x00, 0x03, 0x00, 0x00, 0x02, 0x00, 0x03, /* ........ */
-0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0xc9, /* ........ */
-0x00, 0x00, 0x01, 0x00, 0x00, 0x00,              /* ...... */
+	0x10, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, /* ........ */
+	0x00, 0x00, 0x01, 0x00, 0x00, 0x02, 0x00, 0x02, /* ........ */
+	0x00, 0x00, 0x03, 0x00, 0x00, 0x02, 0x00, 0x03, /* ........ */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0xc9, /* ........ */
+	0x00, 0x00, 0x01, 0x00, 0x00, 0x00,             /* ...... */
 };
 
+static bool expecting_ra;
+static bool expecting_dad;
+static u32_t dad_time[3];
 static bool test_failed;
 static struct k_sem wait_data;
+static bool recv_cb_called;
 
 #define WAIT_TIME 250
 #define WAIT_TIME_LONG MSEC_PER_SEC
@@ -159,38 +166,53 @@ static void net_test_iface_init(struct net_if *iface)
 			     NET_LINK_ETHERNET);
 }
 
-static struct net_pkt *prepare_ra_message(void)
+/**
+ * @brief IPv6 handle RA message
+ */
+static void prepare_ra_message(struct net_pkt *pkt)
 {
-	struct net_pkt *pkt;
+	struct net_eth_hdr *hdr;
 	struct net_buf *frag;
-	struct net_if *iface;
 
-	iface = net_if_get_default();
+	/* Let's cleanup the frag entirely */
+	frag = pkt->frags;
+	pkt->frags = NULL;
 
-	pkt = net_pkt_get_reserve_rx(net_if_get_ll_reserve(iface, NULL),
-				      K_FOREVER);
-
-	NET_ASSERT_INFO(pkt, "Out of RX packets");
+	net_buf_unref(frag);
 
 	frag = net_pkt_get_frag(pkt, K_FOREVER);
-
 	net_pkt_frag_add(pkt, frag);
 
-	net_pkt_set_iface(pkt, iface);
-	net_pkt_set_family(pkt, AF_INET6);
-	net_pkt_set_ip_hdr_len(pkt, sizeof(struct net_ipv6_hdr));
+	hdr = (struct net_eth_hdr *)frag->data;
 
-	net_pkt_ll_clear(pkt);
+	memset(&hdr->src, 0, sizeof(struct net_eth_addr));
+	memcpy(&hdr->dst, net_pkt_iface(pkt)->if_dev->link_addr.addr,
+	       sizeof(struct net_eth_addr));
+	hdr->type = htons(NET_ETH_PTYPE_IPV6);
+
+	net_buf_add(frag, sizeof(struct net_eth_hdr));
 
 	memcpy(net_buf_add(frag, sizeof(icmpv6_ra)),
 	       icmpv6_ra, sizeof(icmpv6_ra));
-
-	return pkt;
 }
 
-#define NET_ICMP_HDR(pkt) ((struct net_icmp_hdr *)net_pkt_icmp_data(pkt))
+static struct net_icmp_hdr *get_icmp_hdr(struct net_pkt *pkt)
+{
+	/* First frag is the ll header */
+	struct net_buf *bak = pkt->frags;
+	struct net_icmp_hdr *hdr;
 
-static int tester_send(struct net_if *iface, struct net_pkt *pkt)
+	pkt->frags = bak->frags;
+
+	hdr = net_pkt_icmp_data(pkt);
+
+	pkt->frags = bak;
+
+	return hdr;
+}
+
+
+static int tester_send(struct device *dev, struct net_pkt *pkt)
 {
 	struct net_icmp_hdr *icmp;
 
@@ -199,24 +221,45 @@ static int tester_send(struct net_if *iface, struct net_pkt *pkt)
 		return -ENODATA;
 	}
 
-	icmp = NET_ICMP_HDR(pkt);
+	icmp = get_icmp_hdr(pkt);
 
 	/* Reply with RA messge */
 	if (icmp->type == NET_ICMPV6_RS) {
-		net_pkt_unref(pkt);
-		pkt = prepare_ra_message();
+		if (expecting_ra) {
+			prepare_ra_message(pkt);
+		} else {
+			goto out;
+		}
+	}
+
+	if (icmp->type == NET_ICMPV6_NS) {
+		if (expecting_dad) {
+			if (dad_time[0] == 0) {
+				dad_time[0] = k_uptime_get_32();
+			} else if (dad_time[1] == 0) {
+				dad_time[1] = k_uptime_get_32();
+			} else if (dad_time[2] == 0) {
+				dad_time[2] = k_uptime_get_32();
+			}
+
+			goto out;
+		}
 	}
 
 	/* Feed this data back to us */
-	if (net_recv_data(iface, pkt) < 0) {
+	if (net_recv_data(net_pkt_iface(pkt), pkt) < 0) {
 		TC_ERROR("Data receive failed.");
 		goto out;
 	}
 
+	/* L2 will unref pkt, so since it got to rx path we need to ref it again
+	 * or it will be freed.
+	 */
+	net_pkt_ref(pkt);
+
 	return 0;
 
 out:
-	net_pkt_unref(pkt);
 	test_failed = true;
 
 	return 0;
@@ -224,13 +267,13 @@ out:
 
 struct net_test_ipv6 net_test_data;
 
-static struct net_if_api net_test_if_api = {
-	.init = net_test_iface_init,
+static const struct ethernet_api net_test_if_api = {
+	.iface_api.init = net_test_iface_init,
 	.send = tester_send,
 };
 
-#define _ETH_L2_LAYER DUMMY_L2
-#define _ETH_L2_CTX_TYPE NET_L2_GET_CTX_TYPE(DUMMY_L2)
+#define _ETH_L2_LAYER ETHERNET_L2
+#define _ETH_L2_CTX_TYPE NET_L2_GET_CTX_TYPE(ETHERNET_L2)
 
 NET_DEVICE_INIT(net_test_ipv6, "net_test_ipv6",
 		net_test_dev_init, &net_test_data, NULL,
@@ -238,18 +281,20 @@ NET_DEVICE_INIT(net_test_ipv6, "net_test_ipv6",
 		&net_test_if_api, _ETH_L2_LAYER, _ETH_L2_CTX_TYPE,
 		127);
 
-static bool test_init(void)
+
+/**
+ * @brief IPv6 Init
+ */
+static void test_init(void)
 {
 	struct net_if_addr *ifaddr = NULL, *ifaddr2;
 	struct net_if_mcast_addr *maddr;
 	struct net_if *iface = net_if_get_default();
 	struct net_if *iface2 = NULL;
+	struct net_if_ipv6 *ipv6;
 	int i;
 
-	if (!iface) {
-		TC_ERROR("Interface is NULL\n");
-		return false;
-	}
+	zassert_not_null(iface, "Interface is NULL");
 
 	/* We cannot use net_if_ipv6_addr_add() to add the address to
 	 * network interface in this case as that would trigger DAD which
@@ -257,12 +302,15 @@ static bool test_init(void)
 	 * manually in this special case so that subsequent tests can
 	 * pass.
 	 */
+	zassert_false(net_if_config_ipv6_get(iface, &ipv6) < 0,
+			"IPv6 config is not valid");
+
 	for (i = 0; i < NET_IF_MAX_IPV6_ADDR; i++) {
-		if (iface->ipv6.unicast[i].is_used) {
+		if (iface->config.ip.ipv6->unicast[i].is_used) {
 			continue;
 		}
 
-		ifaddr = &iface->ipv6.unicast[i];
+		ifaddr = &iface->config.ip.ipv6->unicast[i];
 
 		ifaddr->is_used = true;
 		ifaddr->address.family = AF_INET6;
@@ -273,27 +321,24 @@ static bool test_init(void)
 	}
 
 	ifaddr2 = net_if_ipv6_addr_lookup(&my_addr, &iface2);
-	if (ifaddr2 != ifaddr) {
-		TC_ERROR("Invalid ifaddr (%p vs %p)\n", ifaddr, ifaddr2);
-		return false;
-	}
+	zassert_true(ifaddr2 == ifaddr, "Invalid ifaddr (%p vs %p)\n", ifaddr, ifaddr2);
 
 	net_ipv6_addr_create(&mcast_addr, 0xff02, 0, 0, 0, 0, 0, 0, 0x0001);
 
 	maddr = net_if_ipv6_maddr_add(iface, &mcast_addr);
-	if (!maddr) {
-		TC_ERROR("Cannot add multicast IPv6 address %s\n",
-		       net_sprint_ipv6_addr(&mcast_addr));
-		return false;
-	}
+	zassert_not_null(maddr, "Cannot add multicast IPv6 address %s\n",
+			 net_sprint_ipv6_addr(&mcast_addr));
 
 	/* The semaphore is there to wait the data to be received. */
 	k_sem_init(&wait_data, 0, UINT_MAX);
 
-	return true;
 }
 
-static bool net_test_cmp_prefix(void)
+/**
+ * @brief IPv6 compare prefix
+ *
+ */
+static void test_cmp_prefix(void)
 {
 	bool st;
 
@@ -302,63 +347,44 @@ static bool net_test_cmp_prefix(void)
 	struct in6_addr prefix2 = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
 					0, 0, 0, 0, 0, 0, 0, 0x2 } } };
 
-	st = net_is_ipv6_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 64);
-	if (!st) {
-		TC_ERROR("Prefix /64  compare failed\n");
-		return false;
-	}
+	st = net_ipv6_is_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 64);
+	zassert_true(st, "Prefix /64  compare failed");
 
-	st = net_is_ipv6_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 65);
-	if (!st) {
-		TC_ERROR("Prefix /65 compare failed\n");
-		return false;
-	}
+	st = net_ipv6_is_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 65);
+	zassert_true(st, "Prefix /65 compare failed");
 
 	/* Set one extra bit in the other prefix for testing /65 */
 	prefix1.s6_addr[8] = 0x80;
 
-	st = net_is_ipv6_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 65);
-	if (st) {
-		TC_ERROR("Prefix /65 compare should have failed\n");
-		return false;
-	}
+	st = net_ipv6_is_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 65);
+	zassert_false(st, "Prefix /65 compare should have failed");
 
 	/* Set two bits in prefix2, it is now /66 */
 	prefix2.s6_addr[8] = 0xc0;
 
-	st = net_is_ipv6_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 65);
-	if (!st) {
-		TC_ERROR("Prefix /65 compare failed\n");
-		return false;
-	}
+	st = net_ipv6_is_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 65);
+	zassert_true(st, "Prefix /65 compare failed");
 
 	/* Set all remaining bits in prefix2, it is now /128 */
-	memset(&prefix2.s6_addr[8], 0xff, 8);
+	(void)memset(&prefix2.s6_addr[8], 0xff, 8);
 
-	st = net_is_ipv6_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 65);
-	if (!st) {
-		TC_ERROR("Prefix /65 compare failed\n");
-		return false;
-	}
+	st = net_ipv6_is_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 65);
+	zassert_true(st, "Prefix /65 compare failed");
 
 	/* Comparing /64 should be still ok */
-	st = net_is_ipv6_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 64);
-	if (!st) {
-		TC_ERROR("Prefix /64 compare failed\n");
-		return false;
-	}
+	st = net_ipv6_is_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 64);
+	zassert_true(st, "Prefix /64 compare failed");
 
 	/* But comparing /66 should should fail */
-	st = net_is_ipv6_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 66);
-	if (st) {
-		TC_ERROR("Prefix /66 compare should have failed\n");
-		return false;
-	}
+	st = net_ipv6_is_prefix((u8_t *)&prefix1, (u8_t *)&prefix2, 66);
+	zassert_false(st, "Prefix /66 compare should have failed");
 
-	return true;
 }
 
-static bool net_test_add_neighbor(void)
+/**
+ * @brief IPv6 add neighbor
+ */
+static void test_add_neighbor(void)
 {
 	struct net_nbr *nbr;
 	struct net_linkaddr_storage llstorage;
@@ -377,46 +403,42 @@ static bool net_test_add_neighbor(void)
 
 	nbr = net_ipv6_nbr_add(net_if_get_default(), &peer_addr, &lladdr,
 			       false, NET_IPV6_NBR_STATE_REACHABLE);
-	if (!nbr) {
-		TC_ERROR("Cannot add peer %s to neighbor cache\n",
+	zassert_not_null(nbr, "Cannot add peer %s to neighbor cache\n",
 			 net_sprint_ipv6_addr(&peer_addr));
-		return false;
-	}
 
-	return true;
 }
 
-static bool net_test_nbr_lookup_fail(void)
+/**
+ * @brief IPv6 neighbor lookup fail
+ */
+static void test_nbr_lookup_fail(void)
 {
 	struct net_nbr *nbr;
 
 	nbr = net_ipv6_nbr_lookup(net_if_get_default(),
 				  &peer_addr);
-	if (nbr) {
-		TC_ERROR("Neighbor %s found in cache\n",
-			 net_sprint_ipv6_addr(&peer_addr));
-		return false;
-	}
+	zassert_is_null(nbr, "Neighbor %s found in cache\n",
+			net_sprint_ipv6_addr(&peer_addr));
 
-	return true;
 }
 
-static bool net_test_nbr_lookup_ok(void)
+/**
+ * @brief IPv6 neighbor lookup ok
+ */
+static void test_nbr_lookup_ok(void)
 {
 	struct net_nbr *nbr;
 
 	nbr = net_ipv6_nbr_lookup(net_if_get_default(),
 				  &peer_addr);
-	if (!nbr) {
-		TC_ERROR("Neighbor %s not found in cache\n",
+	zassert_not_null(nbr, "Neighbor %s not found in cache\n",
 			 net_sprint_ipv6_addr(&peer_addr));
-		return false;
-	}
-
-	return true;
 }
 
-static bool net_test_send_ns_extra_options(void)
+/**
+ * @brief IPv6 send NS extra options
+ */
+static void test_send_ns_extra_options(void)
 {
 	struct net_pkt *pkt;
 	struct net_buf *frag;
@@ -424,8 +446,7 @@ static bool net_test_send_ns_extra_options(void)
 
 	iface = net_if_get_default();
 
-	pkt = net_pkt_get_reserve_tx(net_if_get_ll_reserve(iface, NULL),
-				      K_FOREVER);
+	pkt = net_pkt_get_reserve_tx(K_FOREVER);
 
 	NET_ASSERT_INFO(pkt, "Out of TX packets");
 
@@ -437,20 +458,20 @@ static bool net_test_send_ns_extra_options(void)
 	net_pkt_set_family(pkt, AF_INET6);
 	net_pkt_set_ip_hdr_len(pkt, sizeof(struct net_ipv6_hdr));
 
-	net_pkt_ll_clear(pkt);
+	net_pkt_lladdr_clear(pkt);
 
 	memcpy(net_buf_add(frag, sizeof(icmpv6_ns_invalid)),
 	       icmpv6_ns_invalid, sizeof(icmpv6_ns_invalid));
 
-	if (net_recv_data(iface, pkt) < 0) {
-		TC_ERROR("Data receive for invalid NS failed.");
-		return false;
-	}
+	zassert_false((net_recv_data(iface, pkt) < 0),
+		      "Data receive for invalid NS failed.");
 
-	return true;
 }
 
-static bool net_test_send_ns_no_options(void)
+/**
+ * @brief IPv6 send NS no option
+ */
+static void test_send_ns_no_options(void)
 {
 	struct net_pkt *pkt;
 	struct net_buf *frag;
@@ -458,8 +479,7 @@ static bool net_test_send_ns_no_options(void)
 
 	iface = net_if_get_default();
 
-	pkt = net_pkt_get_reserve_tx(net_if_get_ll_reserve(iface, NULL),
-				      K_FOREVER);
+	pkt = net_pkt_get_reserve_tx(K_FOREVER);
 
 	NET_ASSERT_INFO(pkt, "Out of TX packets");
 
@@ -471,33 +491,29 @@ static bool net_test_send_ns_no_options(void)
 	net_pkt_set_family(pkt, AF_INET6);
 	net_pkt_set_ip_hdr_len(pkt, sizeof(struct net_ipv6_hdr));
 
-	net_pkt_ll_clear(pkt);
+	net_pkt_lladdr_clear(pkt);
 
 	memcpy(net_buf_add(frag, sizeof(icmpv6_ns_no_sllao)),
 	       icmpv6_ns_no_sllao, sizeof(icmpv6_ns_no_sllao));
 
-	if (net_recv_data(iface, pkt) < 0) {
-		TC_ERROR("Data receive for invalid NS failed.");
-		return false;
-	}
-
-	return true;
+	zassert_false((net_recv_data(iface, pkt) < 0),
+		      "Data receive for invalid NS failed.");
 }
 
-static bool net_test_prefix_timeout(void)
+/**
+ * @brief IPv6 prefix timeout
+ */
+static void test_prefix_timeout(void)
 {
 	struct net_if_ipv6_prefix *prefix;
 	struct in6_addr addr = { { { 0x20, 1, 0x0d, 0xb8, 42, 0, 0, 0,
 				     0, 0, 0, 0, 0, 0, 0, 0 } } };
-	u32_t lifetime = 1;
+	u32_t lifetime = 1U;
 	int len = 64;
 
 	prefix = net_if_ipv6_prefix_add(net_if_get_default(),
 					&addr, len, lifetime);
-	if (!prefix) {
-		TC_ERROR("Cannot get prefix\n");
-		return false;
-	}
+	zassert_not_null(prefix, "Cannot get prefix");
 
 	net_if_ipv6_prefix_set_lf(prefix, false);
 	net_if_ipv6_prefix_set_timer(prefix, lifetime);
@@ -506,69 +522,82 @@ static bool net_test_prefix_timeout(void)
 
 	prefix = net_if_ipv6_prefix_lookup(net_if_get_default(),
 					   &addr, len);
-	if (prefix) {
-		TC_ERROR("Prefix %s/%d should have expired",
-			 net_sprint_ipv6_addr(&addr), len);
-		return false;
-	}
-
-	return true;
+	zassert_is_null(prefix, "Prefix %s/%d should have expired",
+			net_sprint_ipv6_addr(&addr), len);
 }
 
-#if 0
-/* This test has issues so disabling it temporarily */
-static bool net_test_prefix_timeout_overflow(void)
+static void test_prefix_timeout_long(void)
 {
-	struct net_if_ipv6_prefix *prefix;
-	struct in6_addr addr = { { { 0x20, 1, 0x0d, 0xb8, 0, 0, 0, 0,
-				     0, 0, 0, 0, 0, 0, 0, 1 } } };
-	int len = 64, lifetime = 0xfffffffe;
+	struct net_if_ipv6_prefix *ifprefix;
+	struct in6_addr prefix = { { { 0x20, 1, 0x0d, 0xb8, 43, 0, 0, 0,
+				     0, 0, 0, 0, 0, 0, 0, 0 } } };
+	u32_t lifetime = 0xfffffffe;
+	int len = 64;
+	u64_t remaining;
+	int ret;
 
-	prefix = net_if_ipv6_prefix_add(net_if_get_default(),
-					&addr, len, lifetime);
+	ifprefix = net_if_ipv6_prefix_add(net_if_get_default(),
+					  &prefix, len, lifetime);
 
-	net_if_ipv6_prefix_set_lf(prefix, false);
-	net_if_ipv6_prefix_set_timer(prefix, lifetime);
+	net_if_ipv6_prefix_set_lf(ifprefix, false);
+	net_if_ipv6_prefix_set_timer(ifprefix, lifetime);
 
-	if (!k_sem_take(&wait_data, (lifetime * 3/2) * MSEC_PER_SEC)) {
-		TC_ERROR("Prefix %s/%d lock should still be there",
-			 net_sprint_ipv6_addr(&addr), len);
-		return false;
-	}
+	zassert_equal(ifprefix->lifetime.wrap_counter, 2000,
+		      "Wrap counter wrong (%d)",
+		      ifprefix->lifetime.wrap_counter);
+	remaining = K_SECONDS((u64_t)lifetime) -
+		NET_TIMEOUT_MAX_VALUE * (u64_t)ifprefix->lifetime.wrap_counter;
 
-	if (!net_if_ipv6_prefix_rm(net_if_get_default(), &addr, len)) {
-		TC_ERROR("Prefix %s/%d should have been removed",
-			 net_sprint_ipv6_addr(&addr), len);
-		return false;
-	}
+	zassert_equal(remaining, ifprefix->lifetime.timer_timeout,
+		     "Remaining time wrong (%llu vs %d)", remaining,
+		      ifprefix->lifetime.timer_timeout);
 
-	return true;
+	ret = net_if_ipv6_prefix_rm(net_if_get_default(), &prefix, len);
+	zassert_equal(ret, true, "Prefix %s/%d should have been removed",
+		      net_sprint_ipv6_addr(&prefix), len);
 }
-#endif
 
-static bool net_test_ra_message(void)
+static void test_rs_message(void)
+{
+	struct net_if *iface;
+	int ret;
+
+	iface = net_if_get_default();
+
+	expecting_ra = true;
+
+	ret = net_ipv6_send_rs(iface);
+
+	zassert_equal(ret, 0, "RS sending failed (%d)", ret);
+}
+
+static void test_ra_message(void)
 {
 	struct in6_addr addr = { { { 0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0x2, 0x60,
 				     0x97, 0xff, 0xfe, 0x07, 0x69, 0xea } } };
-	struct in6_addr prefix = { { {0x3f, 0xfe, 0x05, 0x07, 0, 0, 0, 1,
-				     0, 0, 0, 0, 0, 0, 0, 0 } } };
+	struct in6_addr prefix = { { { 0x3f, 0xfe, 0x05, 0x07, 0, 0, 0, 1,
+				       0, 0, 0, 0, 0, 0, 0, 0 } } };
 
-	if (!net_if_ipv6_prefix_lookup(net_if_get_default(), &prefix, 32)) {
-		TC_ERROR("Prefix %s should be here\n",
-			 net_sprint_ipv6_addr(&addr));
-		return false;
-	}
+	/* We received RA message earlier, make sure that the information
+	 * in that message is placed to proper prefix and lookup info.
+	 */
 
-	if (!net_if_ipv6_router_lookup(net_if_get_default(), &addr)) {
-		TC_ERROR("Router %s should be here\n",
-			 net_sprint_ipv6_addr(&addr));
-		return false;
-	}
+	expecting_ra = false;
 
-	return true;
+	zassert_false(!net_if_ipv6_prefix_lookup(net_if_get_default(),
+						 &prefix, 32),
+		      "Prefix %s should be here\n",
+		      net_sprint_ipv6_addr(&prefix));
+
+	zassert_false(!net_if_ipv6_router_lookup(net_if_get_default(), &addr),
+		      "Router %s should be here\n",
+		      net_sprint_ipv6_addr(&addr));
 }
 
-static bool net_test_hbho_message(void)
+/**
+ * @brief IPv6 parse Hop-By-Hop Option
+ */
+static void test_hbho_message(void)
 {
 	struct net_pkt *pkt;
 	struct net_buf *frag;
@@ -576,8 +605,7 @@ static bool net_test_hbho_message(void)
 
 	iface = net_if_get_default();
 
-	pkt = net_pkt_get_reserve_tx(net_if_get_ll_reserve(iface, NULL),
-				      K_FOREVER);
+	pkt = net_pkt_get_reserve_tx(K_FOREVER);
 
 	NET_ASSERT_INFO(pkt, "Out of TX packets");
 
@@ -589,22 +617,398 @@ static bool net_test_hbho_message(void)
 	net_pkt_set_family(pkt, AF_INET6);
 	net_pkt_set_ip_hdr_len(pkt, sizeof(struct net_ipv6_hdr));
 
-	net_pkt_ll_clear(pkt);
+	net_pkt_lladdr_clear(pkt);
 
 	memcpy(net_buf_add(frag, sizeof(ipv6_hbho)),
 	       ipv6_hbho, sizeof(ipv6_hbho));
 
-	if (net_recv_data(iface, pkt) < 0) {
-		TC_ERROR("Data receive for HBHO failed.");
-		return false;
-	}
-
-	return true;
+	zassert_false(net_recv_data(iface, pkt) < 0, "Data receive for HBHO failed.");
 }
 
-static bool net_test_change_ll_addr(void)
+/* IPv6 hop-by-hop option in the message HBHO (72 Bytes) */
+static const unsigned char ipv6_hbho_1[] = {
+/* IPv6 header starts here */
+0x60, 0x00, 0x00, 0x00, 0x00, 0x78, 0x00, 0x40,
+0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x08, 0xc0, 0xde, 0xff, 0xfe, 0x9b, 0xb4, 0x47,
+0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+/* Hop-by-hop option starts here */
+0x11, 0x08,
+/* Padding */
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+/* UDP header starts here (8 bytes) */
+0x4e, 0x20, 0x10, 0x92, 0x00, 0x30, 0xa1, 0xc5,
+/* User data starts here (40 bytes) */
+0x30, 0x26, 0x02, 0x01, 0x00, 0x04, 0x06, 0x70,
+0x75, 0x62, 0x6c, 0x69, 0x63, 0xa0, 0x19, 0x02,
+0x01, 0x00, 0x02, 0x01, 0x00, 0x02, 0x01, 0x00,
+0x30, 0x0e, 0x30, 0x0c, 0x06, 0x08, 0x2b, 0x06,
+0x01, 0x02, 0x01, 0x01, 0x05, 0x00, 0x05, 0x00 };
+
+/**
+ * @brief IPv6 parse Hop-By-Hop Option
+ */
+static void test_hbho_message_1(void)
 {
-	u8_t new_mac[] = { 00, 01, 02, 03, 04, 05 };
+	struct net_pkt *pkt;
+	struct net_buf *frag;
+	struct net_if *iface;
+	u16_t pos;
+
+	iface = net_if_get_default();
+
+	pkt = net_pkt_get_reserve_tx(K_FOREVER);
+
+	NET_ASSERT_INFO(pkt, "Out of TX packets");
+
+	frag = net_pkt_get_frag(pkt, K_FOREVER);
+
+	net_pkt_frag_add(pkt, frag);
+
+	net_pkt_set_iface(pkt, iface);
+	net_pkt_set_family(pkt, AF_INET6);
+	net_pkt_set_ip_hdr_len(pkt, sizeof(struct net_ipv6_hdr));
+
+	net_pkt_lladdr_clear(pkt);
+
+	net_pkt_write(pkt, pkt->frags, 0, &pos, sizeof(ipv6_hbho_1),
+		      (u8_t *)ipv6_hbho_1, K_FOREVER);
+
+	zassert_false(net_recv_data(iface, pkt) < 0,
+		      "Data receive for HBHO failed.");
+
+	/* Verify IPv6 Ext hdr length */
+	zassert_false(net_pkt_ipv6_ext_len(pkt) == 72,
+		      "IPv6 mismatch ext hdr length");
+}
+
+/* IPv6 hop-by-hop option in the message HBHO (104 Bytes) */
+static const unsigned char ipv6_hbho_2[] = {
+/* IPv6 header starts here */
+0x60, 0x00, 0x00, 0x00, 0x00, 0x98, 0x00, 0x40,
+0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x08, 0xc0, 0xde, 0xff, 0xfe, 0x9b, 0xb4, 0x47,
+0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+/* Hop-by-hop option starts here */
+0x11, 0x0c,
+/* padding */
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x01, 0x04, 0x00, 0x00, 0x00, 0x00,
+/* udp header starts here (8 bytes) */
+0x4e, 0x20, 0x10, 0x92, 0x00, 0x30, 0xa1, 0xc5,
+/* User data starts here (40 bytes) */
+0x30, 0x26, 0x02, 0x01, 0x00, 0x04, 0x06, 0x70,
+0x75, 0x62, 0x6c, 0x69, 0x63, 0xa0, 0x19, 0x02,
+0x01, 0x00, 0x02, 0x01, 0x00, 0x02, 0x01, 0x00,
+0x30, 0x0e, 0x30, 0x0c, 0x06, 0x08, 0x2b, 0x06,
+0x01, 0x02, 0x01, 0x01, 0x05, 0x00, 0x05, 0x00 };
+
+/**
+ * @brief IPv6 parse Hop-By-Hop Option
+ */
+static void test_hbho_message_2(void)
+{
+	struct net_pkt *pkt;
+	struct net_buf *frag;
+	struct net_if *iface;
+	u16_t pos;
+
+	iface = net_if_get_default();
+
+	pkt = net_pkt_get_reserve_tx(K_FOREVER);
+
+	NET_ASSERT_INFO(pkt, "Out of TX packets");
+
+	frag = net_pkt_get_frag(pkt, K_FOREVER);
+
+	net_pkt_frag_add(pkt, frag);
+
+	net_pkt_set_iface(pkt, iface);
+	net_pkt_set_family(pkt, AF_INET6);
+	net_pkt_set_ip_hdr_len(pkt, sizeof(struct net_ipv6_hdr));
+
+	net_pkt_lladdr_clear(pkt);
+
+	net_pkt_write(pkt, pkt->frags, 0, &pos, sizeof(ipv6_hbho_2),
+		      (u8_t *)ipv6_hbho_2, K_FOREVER);
+
+	zassert_false(net_recv_data(iface, pkt) < 0,
+		      "Data receive for HBHO failed.");
+
+	/* Verify IPv6 Ext hdr length */
+	zassert_false(net_pkt_ipv6_ext_len(pkt) == 104,
+		      "IPv6 mismatch ext hdr length");
+}
+
+/* IPv6 hop-by-hop option in the message HBHO (920 bytes) */
+static const unsigned char ipv6_hbho_3[] = {
+/* IPv6 header starts here */
+0x60, 0x00, 0x00, 0x00, 0x03, 0xc8, 0x00, 0x40,
+0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x08, 0xc0, 0xde, 0xff, 0xfe, 0x9b, 0xb4, 0x47,
+0x20, 0x01, 0x0d, 0xb8, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+/* Hop-by-hop option starts here */
+0x11, 0x72,
+/* padding */
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x01, 0x04, 0x00, 0x00, 0x00, 0x00,
+/* udp header starts here (8 bytes) */
+0x4e, 0x20, 0x10, 0x92, 0x00, 0x30, 0xa1, 0xc5,
+/* User data starts here (40 bytes) */
+0x30, 0x26, 0x02, 0x01, 0x00, 0x04, 0x06, 0x70,
+0x75, 0x62, 0x6c, 0x69, 0x63, 0xa0, 0x19, 0x02,
+0x01, 0x00, 0x02, 0x01, 0x00, 0x02, 0x01, 0x00,
+0x30, 0x0e, 0x30, 0x0c, 0x06, 0x08, 0x2b, 0x06,
+0x01, 0x02, 0x01, 0x01, 0x05, 0x00, 0x05, 0x00
+};
+
+/**
+ * @brief IPv6 parse Hop-By-Hop Option
+ */
+static void test_hbho_message_3(void)
+{
+	struct net_pkt *pkt;
+	struct net_buf *frag;
+	struct net_if *iface;
+	u16_t pos;
+
+	iface = net_if_get_default();
+
+	pkt = net_pkt_get_reserve_tx(K_FOREVER);
+
+	NET_ASSERT_INFO(pkt, "Out of TX packets");
+
+	frag = net_pkt_get_frag(pkt, K_FOREVER);
+
+	net_pkt_frag_add(pkt, frag);
+
+	net_pkt_set_iface(pkt, iface);
+	net_pkt_set_family(pkt, AF_INET6);
+	net_pkt_set_ip_hdr_len(pkt, sizeof(struct net_ipv6_hdr));
+
+	net_pkt_lladdr_clear(pkt);
+
+	net_pkt_write(pkt, pkt->frags, 0, &pos, sizeof(ipv6_hbho_3),
+		      (u8_t *)ipv6_hbho_3, K_FOREVER);
+
+	zassert_false(net_recv_data(iface, pkt) < 0,
+		      "Data receive for HBHO failed.");
+
+	/* Verify IPv6 Ext hdr length */
+	zassert_false(net_pkt_ipv6_ext_len(pkt) == 920,
+		      "IPv6 mismatch ext hdr length");
+}
+
+#define FIFTY_DAYS (60 * 60 * 24 * 50)
+
+/* Implemented in subsys/net/ip/net_if.c */
+extern void net_address_lifetime_timeout(void);
+
+static void test_address_lifetime(void)
+{
+	struct in6_addr addr = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
+				     0, 0, 0, 0, 0, 0, 0x20, 0x1 } } };
+	struct net_if *iface = net_if_get_default();
+	u32_t vlifetime = 0xffff;
+	u64_t timeout = K_SECONDS((u64_t)vlifetime);
+	struct net_if_addr *ifaddr;
+	u64_t remaining;
+	bool ret;
+
+	ifaddr = net_if_ipv6_addr_add(iface, &addr, NET_ADDR_AUTOCONF,
+				      vlifetime);
+	zassert_not_null(ifaddr, "Address with lifetime cannot be added");
+
+	/* Make sure DAD gets some time to run */
+	k_sleep(K_MSEC(200));
+
+	/* Then check that the timeout values in net_if_addr are set correctly.
+	 * Start first with smaller timeout values.
+	 */
+	zassert_equal(ifaddr->lifetime.timer_timeout, timeout,
+		      "Timer timeout set wrong (%d vs %llu)",
+		      ifaddr->lifetime.timer_timeout, timeout);
+	zassert_equal(ifaddr->lifetime.wrap_counter, 0,
+		      "Wrap counter wrong (%d)", ifaddr->lifetime.wrap_counter);
+
+	/* Then update the lifetime and check that timeout values are correct
+	 */
+	vlifetime = FIFTY_DAYS;
+	net_if_ipv6_addr_update_lifetime(ifaddr, vlifetime);
+
+	zassert_equal(ifaddr->lifetime.wrap_counter, 2,
+		      "Wrap counter wrong (%d)", ifaddr->lifetime.wrap_counter);
+	remaining = K_SECONDS((u64_t)vlifetime) -
+		NET_TIMEOUT_MAX_VALUE * (u64_t)ifaddr->lifetime.wrap_counter;
+
+	zassert_equal(remaining, ifaddr->lifetime.timer_timeout,
+		     "Remaining time wrong (%llu vs %d)", remaining,
+		      ifaddr->lifetime.timer_timeout);
+
+	/* The address should not expire */
+	net_address_lifetime_timeout();
+
+	zassert_equal(ifaddr->lifetime.wrap_counter, 2,
+		      "Wrap counter wrong (%d)", ifaddr->lifetime.wrap_counter);
+
+	ifaddr->lifetime.timer_timeout = K_MSEC(10);
+	ifaddr->lifetime.timer_start = k_uptime_get_32() - K_MSEC(10);
+	ifaddr->lifetime.wrap_counter = 0;
+
+	net_address_lifetime_timeout();
+
+	/* The address should be expired now */
+	zassert_equal(ifaddr->lifetime.timer_timeout, 0,
+		      "Timer timeout set wrong (%llu vs %llu)",
+		      ifaddr->lifetime.timer_timeout, 0);
+	zassert_equal(ifaddr->lifetime.wrap_counter, 0,
+		      "Wrap counter wrong (%d)", ifaddr->lifetime.wrap_counter);
+
+	ret = net_if_ipv6_addr_rm(iface, &addr);
+	zassert_true(ret, "Address with lifetime cannot be removed");
+}
+
+/**
+ * @brief IPv6 change ll address
+ */
+static void test_change_ll_addr(void)
+{
+	static u8_t new_mac[] = { 00, 01, 02, 03, 04, 05 };
 	struct net_linkaddr_storage *ll;
 	struct net_linkaddr *ll_iface;
 	struct net_pkt *pkt;
@@ -619,8 +1023,7 @@ static bool net_test_change_ll_addr(void)
 
 	iface = net_if_get_default();
 
-	pkt = net_pkt_get_reserve_tx(net_if_get_ll_reserve(iface, &dst),
-				      K_FOREVER);
+	pkt = net_pkt_get_reserve_tx(K_FOREVER);
 
 	NET_ASSERT_INFO(pkt, "Out of TX packets");
 
@@ -637,20 +1040,15 @@ static bool net_test_change_ll_addr(void)
 
 	ret = net_ipv6_send_na(iface, &peer_addr, &dst,
 			       &peer_addr, flags);
-	if (ret < 0) {
-		TC_ERROR("Cannot send NA 1\n");
-		return false;
-	}
+	zassert_false(ret < 0, "Cannot send NA 1");
 
 	nbr = net_ipv6_nbr_lookup(iface, &peer_addr);
 	ll = net_nbr_get_lladdr(nbr->idx);
 
 	ll_iface = net_if_get_link_addr(iface);
 
-	if (memcmp(ll->addr, ll_iface->addr, ll->len) != 0) {
-		TC_ERROR("Wrong link address 1\n");
-		return false;
-	}
+	zassert_true(memcmp(ll->addr, ll_iface->addr, ll->len) != 0,
+		     "Wrong link address 1");
 
 	/* As the net_ipv6_send_na() uses interface link address to
 	 * greate tllao, change the interface ll address here.
@@ -659,56 +1057,381 @@ static bool net_test_change_ll_addr(void)
 
 	ret = net_ipv6_send_na(iface, &peer_addr, &dst,
 			       &peer_addr, flags);
-	if (ret < 0) {
-		TC_ERROR("Cannot send NA 2\n");
-		return false;
-	}
+	zassert_false(ret < 0, "Cannot send NA 2");
 
 	nbr = net_ipv6_nbr_lookup(iface, &peer_addr);
 	ll = net_nbr_get_lladdr(nbr->idx);
 
-	if (memcmp(ll->addr, ll_iface->addr, ll->len) != 0) {
-		TC_ERROR("Wrong link address 2\n");
-		return false;
-	}
-
-	return true;
+	zassert_true(memcmp(ll->addr, ll_iface->addr, ll->len) != 0,
+		     "Wrong link address 2");
 }
 
-static const struct {
-	const char *name;
-	bool (*func)(void);
-} tests[] = {
-	{ "test init", test_init },
-	{ "IPv6 compare prefix", net_test_cmp_prefix },
-	{ "IPv6 neighbor lookup fail", net_test_nbr_lookup_fail },
-	{ "IPv6 add neighbor", net_test_add_neighbor },
-	{ "IPv6 neighbor lookup ok", net_test_nbr_lookup_ok },
-	{ "IPv6 send NS extra options", net_test_send_ns_extra_options },
-	{ "IPv6 send NS no options", net_test_send_ns_no_options },
-	{ "IPv6 handle RA message", net_test_ra_message },
-	{ "IPv6 parse Hop-By-Hop Option", net_test_hbho_message },
-	{ "IPv6 change ll address", net_test_change_ll_addr },
-	{ "IPv6 prefix timeout", net_test_prefix_timeout },
-	/*{ "IPv6 prefix timeout overflow", net_test_prefix_timeout_overflow },*/
-};
-
-void main(void)
+static void test_dad_timeout(void)
 {
-	int count, pass;
+#if defined(CONFIG_NET_IPV6_DAD)
+	struct in6_addr addr1 = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
+				      0, 0, 0, 0, 0, 0, 0x99, 0x1 } } };
+	struct in6_addr addr2 = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
+				      0, 0, 0, 0, 0, 0, 0x99, 0x2 } } };
+	struct in6_addr addr3 = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
+				      0, 0, 0, 0, 0, 0, 0x99, 0x3 } } };
+	struct net_if *iface = net_if_get_default();
 
-	for (count = 0, pass = 0; count < ARRAY_SIZE(tests); count++) {
-		TC_START(tests[count].name);
-		test_failed = false;
-		if (!tests[count].func() || test_failed) {
-			TC_END(FAIL, "failed\n");
-		} else {
-			TC_END(PASS, "passed\n");
-			pass++;
-		}
+	struct net_if_addr *ifaddr;
 
-		k_yield();
-	}
+	expecting_dad = true;
 
-	TC_END_REPORT(((pass != ARRAY_SIZE(tests)) ? TC_FAIL : TC_PASS));
+	ifaddr = net_if_ipv6_addr_add(iface, &addr1, NET_ADDR_AUTOCONF, 0xffff);
+	zassert_not_null(ifaddr, "Address 1 cannot be added");
+
+	k_sleep(K_MSEC(10));
+
+	ifaddr = net_if_ipv6_addr_add(iface, &addr2, NET_ADDR_AUTOCONF, 0xffff);
+	zassert_not_null(ifaddr, "Address 2 cannot be added");
+
+	k_sleep(K_MSEC(10));
+
+	ifaddr = net_if_ipv6_addr_add(iface, &addr3, NET_ADDR_AUTOCONF, 0xffff);
+	zassert_not_null(ifaddr, "Address 3 cannot be added");
+
+	k_sleep(K_MSEC(200));
+
+	/* We should have received three DAD queries, make sure they are in
+	 * proper order.
+	 */
+	zassert_true(dad_time[0] < dad_time[1], "DAD timer 1+2 failure");
+	zassert_true(dad_time[1] < dad_time[2], "DAD timer 2+3 failure");
+	zassert_true((dad_time[2] - dad_time[0]) < 100,
+		     "DAD timers took too long time [%u] [%u] [%u]",
+		     dad_time[0], dad_time[1], dad_time[2]);
+
+	expecting_dad = false;
+#endif
+}
+
+#define NET_UDP_HDR(pkt)  ((struct net_udp_hdr *)(net_pkt_udp_data(pkt)))
+
+static void setup_ipv6_udp(struct net_pkt *pkt,
+			   struct in6_addr *local_addr,
+			   struct in6_addr *remote_addr,
+			   u16_t local_port,
+			   u16_t remote_port)
+{
+	static const char payload[] = "foobar";
+
+	NET_IPV6_HDR(pkt)->vtc = 0x60;
+	NET_IPV6_HDR(pkt)->tcflow = 0;
+	NET_IPV6_HDR(pkt)->flow = 0;
+	NET_IPV6_HDR(pkt)->len = htons(NET_UDPH_LEN + strlen(payload));
+
+	NET_IPV6_HDR(pkt)->nexthdr = IPPROTO_UDP;
+	NET_IPV6_HDR(pkt)->hop_limit = 255;
+
+	net_ipaddr_copy(&NET_IPV6_HDR(pkt)->src, local_addr);
+	net_ipaddr_copy(&NET_IPV6_HDR(pkt)->dst, remote_addr);
+
+	net_pkt_set_ip_hdr_len(pkt, sizeof(struct net_ipv6_hdr));
+	net_pkt_set_ipv6_ext_len(pkt, 0);
+
+	net_buf_add(pkt->frags, net_pkt_ip_hdr_len(pkt) +
+				sizeof(struct net_udp_hdr));
+
+	NET_UDP_HDR(pkt)->src_port = htons(local_port);
+	NET_UDP_HDR(pkt)->dst_port = htons(remote_port);
+
+	net_buf_add_mem(pkt->frags, payload, strlen(payload));
+}
+
+static enum net_verdict recv_msg(struct in6_addr *src, struct in6_addr *dst)
+{
+	struct net_pkt *pkt;
+	struct net_buf *frag;
+	struct net_if *iface;
+
+	iface = net_if_get_default();
+
+	pkt = net_pkt_get_reserve_tx(K_FOREVER);
+
+	NET_ASSERT_INFO(pkt, "Out of TX packets");
+
+	frag = net_pkt_get_frag(pkt, K_FOREVER);
+
+	net_pkt_frag_add(pkt, frag);
+
+	net_pkt_set_iface(pkt, iface);
+	net_pkt_set_family(pkt, AF_INET6);
+	net_pkt_set_ip_hdr_len(pkt, sizeof(struct net_ipv6_hdr));
+
+	net_pkt_lladdr_clear(pkt);
+
+	setup_ipv6_udp(pkt, src, dst, 4242, 4321);
+
+	/* We by-pass the normal packet receiving flow in this case in order
+	 * to simplify the testing.
+	 */
+	return net_ipv6_process_pkt(pkt, false);
+}
+
+static int send_msg(struct in6_addr *src, struct in6_addr *dst)
+{
+	struct net_pkt *pkt;
+	struct net_buf *frag;
+	struct net_if *iface;
+
+	iface = net_if_get_default();
+
+	pkt = net_pkt_get_reserve_tx(K_FOREVER);
+
+	NET_ASSERT_INFO(pkt, "Out of TX packets");
+
+	frag = net_pkt_get_frag(pkt, K_FOREVER);
+
+	net_pkt_frag_add(pkt, frag);
+
+	net_pkt_set_iface(pkt, iface);
+	net_pkt_set_family(pkt, AF_INET6);
+	net_pkt_set_ip_hdr_len(pkt, sizeof(struct net_ipv6_hdr));
+
+	net_pkt_lladdr_clear(pkt);
+
+	setup_ipv6_udp(pkt, src, dst, 4242, 4321);
+
+	return net_send_data(pkt);
+}
+
+static void test_src_localaddr_recv(void)
+{
+	struct in6_addr localaddr = { { { 0, 0, 0, 0, 0, 0, 0, 0,
+					  0, 0, 0, 0, 0, 0, 0, 0x1 } } };
+	struct in6_addr addr = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
+				     0, 0, 0, 0, 0, 0, 0, 0x1 } } };
+	enum net_verdict verdict;
+
+	verdict = recv_msg(&localaddr, &addr);
+	zassert_equal(verdict, NET_DROP,
+		      "Local address packet was not dropped");
+}
+
+static void test_dst_localaddr_recv(void)
+{
+	struct in6_addr localaddr = { { { 0, 0, 0, 0, 0, 0, 0, 0,
+					  0, 0, 0, 0, 0, 0, 0, 0x1 } } };
+	struct in6_addr addr = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
+				     0, 0, 0, 0, 0, 0, 0, 0x1 } } };
+	enum net_verdict verdict;
+
+	verdict = recv_msg(&addr, &localaddr);
+	zassert_equal(verdict, NET_DROP,
+		      "Local address packet was not dropped");
+}
+
+static void test_dst_iface_scope_mcast_recv(void)
+{
+	struct in6_addr mcast_iface = { { { 0xff, 0x01, 0, 0, 0, 0, 0, 0,
+					    0, 0, 0, 0, 0, 0, 0, 0 } } };
+	struct in6_addr addr = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
+				     0, 0, 0, 0, 0, 0, 0, 0x1 } } };
+	enum net_verdict verdict;
+
+	verdict = recv_msg(&addr, &mcast_iface);
+	zassert_equal(verdict, NET_DROP,
+		      "Interface scope multicast packet was not dropped");
+}
+
+static void test_dst_zero_scope_mcast_recv(void)
+{
+	struct in6_addr mcast_zero = { { { 0xff, 0x00, 0, 0, 0, 0, 0, 0,
+					   0, 0, 0, 0, 0, 0, 0, 0 } } };
+	struct in6_addr addr = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
+				     0, 0, 0, 0, 0, 0, 0, 0x1 } } };
+	enum net_verdict verdict;
+
+	verdict = recv_msg(&addr, &mcast_zero);
+	zassert_equal(verdict, NET_DROP,
+		      "Zero scope multicast packet was not dropped");
+}
+
+static void test_dst_site_scope_mcast_recv_drop(void)
+{
+	struct in6_addr mcast_site = { { { 0xff, 0x05, 0, 0, 0, 0, 0, 0,
+					   0, 0, 0, 0, 0, 0, 0, 0 } } };
+	struct in6_addr addr = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
+				     0, 0, 0, 0, 0, 0, 0, 0x1 } } };
+	enum net_verdict verdict;
+
+	verdict = recv_msg(&addr, &mcast_site);
+	zassert_equal(verdict, NET_DROP,
+		      "Site scope multicast packet was not dropped");
+}
+
+static void net_ctx_create(struct net_context **ctx)
+{
+	int ret;
+
+	ret = net_context_get(AF_INET6, SOCK_DGRAM, IPPROTO_UDP, ctx);
+	zassert_equal(ret, 0,
+		      "Context create IPv6 UDP test failed");
+}
+
+static void net_ctx_bind_mcast(struct net_context *ctx, struct in6_addr *maddr)
+{
+	struct sockaddr_in6 addr = {
+		.sin6_family = AF_INET6,
+		.sin6_port = htons(4321),
+		.sin6_addr = { { { 0 } } },
+	};
+	int ret;
+
+	net_ipaddr_copy(&addr.sin6_addr, maddr);
+
+	ret = net_context_bind(ctx, (struct sockaddr *)&addr,
+			       sizeof(struct sockaddr_in6));
+	zassert_equal(ret, 0, "Context bind test failed (%d)", ret);
+}
+
+static void net_ctx_listen(struct net_context *ctx)
+{
+	zassert_true(net_context_listen(ctx, 0),
+		     "Context listen IPv6 UDP test failed");
+}
+
+static void recv_cb(struct net_context *context,
+		    struct net_pkt *pkt,
+		    int status,
+		    void *user_data)
+{
+	ARG_UNUSED(context);
+	ARG_UNUSED(pkt);
+	ARG_UNUSED(status);
+	ARG_UNUSED(user_data);
+
+	recv_cb_called = true;
+
+	k_sem_give(&wait_data);
+}
+
+static void net_ctx_recv(struct net_context *ctx)
+{
+	int ret;
+
+	ret = net_context_recv(ctx, recv_cb, 0, NULL);
+	zassert_equal(ret, 0, "Context recv IPv6 UDP failed");
+}
+
+static void join_group(struct in6_addr *mcast_addr)
+{
+	int ret;
+
+	ret = net_ipv6_mld_join(net_if_get_default(), mcast_addr);
+	zassert_equal(ret, 0, "Cannot join IPv6 multicast group");
+}
+
+static void test_dst_site_scope_mcast_recv_ok(void)
+{
+	struct in6_addr mcast_all_dhcp = { { { 0xff, 0x05, 0, 0, 0, 0, 0, 0,
+					    0, 0, 0, 0x01, 0, 0, 0, 0x03 } } };
+	struct in6_addr addr = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
+				     0, 0, 0, 0, 0, 0, 0, 0x1 } } };
+	enum net_verdict verdict;
+	struct net_context *ctx;
+
+	/* The packet will be dropped unless we have a listener and joined the
+	 * group.
+	 */
+	join_group(&mcast_all_dhcp);
+
+	net_ctx_create(&ctx);
+	net_ctx_bind_mcast(ctx, &mcast_all_dhcp);
+	net_ctx_listen(ctx);
+	net_ctx_recv(ctx);
+
+	verdict = recv_msg(&addr, &mcast_all_dhcp);
+	zassert_equal(verdict, NET_OK,
+		      "All DHCP site scope multicast packet was dropped (%d)",
+		      verdict);
+
+	net_context_put(ctx);
+}
+
+static void test_dst_org_scope_mcast_recv(void)
+{
+	struct in6_addr mcast_org = { { { 0xff, 0x08, 0, 0, 0, 0, 0, 0,
+					  0, 0, 0, 0, 0, 0, 0, 0 } } };
+	struct in6_addr addr = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
+				     0, 0, 0, 0, 0, 0, 0, 0x1 } } };
+	enum net_verdict verdict;
+
+	verdict = recv_msg(&addr, &mcast_org);
+	zassert_equal(verdict, NET_DROP,
+		      "Organisation scope multicast packet was not dropped");
+}
+
+static void test_dst_iface_scope_mcast_send(void)
+{
+	struct in6_addr mcast_iface = { { { 0xff, 0x01, 0, 0, 0, 0, 0, 0,
+					    0, 0, 0, 0, 0, 0, 0, 0 } } };
+	struct in6_addr addr = { { { 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0,
+				     0, 0, 0, 0, 0, 0, 0, 0x1 } } };
+	struct net_if_mcast_addr *maddr;
+	struct net_context *ctx;
+	int ret;
+
+	/* Note that there is no need to join the multicast group as the
+	 * interface local scope multicast address packet will not leave the
+	 * device. But we will still need to add proper multicast address to
+	 * the network interface.
+	 */
+	maddr = net_if_ipv6_maddr_add(net_if_get_default(), &mcast_iface);
+	zassert_not_null(maddr, "Cannot add multicast address to interface");
+
+	net_ctx_create(&ctx);
+	net_ctx_bind_mcast(ctx, &mcast_iface);
+	net_ctx_listen(ctx);
+	net_ctx_recv(ctx);
+
+	ret = send_msg(&addr, &mcast_iface);
+	zassert_equal(ret, 0,
+		      "Interface local scope multicast packet was dropped (%d)",
+		      ret);
+
+	k_sem_take(&wait_data, WAIT_TIME);
+
+	zassert_true(recv_cb_called, "No data received on time, "
+		     "IPv6 recv test failed");
+	recv_cb_called = false;
+
+	net_context_put(ctx);
+}
+
+void test_main(void)
+{
+	ztest_test_suite(test_ipv6_fn,
+			 ztest_unit_test(test_init),
+			 ztest_unit_test(test_cmp_prefix),
+			 ztest_unit_test(test_nbr_lookup_fail),
+			 ztest_unit_test(test_add_neighbor),
+			 ztest_unit_test(test_nbr_lookup_ok),
+			 ztest_unit_test(test_send_ns_extra_options),
+			 ztest_unit_test(test_send_ns_no_options),
+			 ztest_unit_test(test_rs_message),
+			 ztest_unit_test(test_ra_message),
+			 ztest_unit_test(test_hbho_message),
+			 ztest_unit_test(test_hbho_message_1),
+			 ztest_unit_test(test_hbho_message_2),
+			 ztest_unit_test(test_hbho_message_3),
+			 ztest_unit_test(test_address_lifetime),
+			 ztest_unit_test(test_change_ll_addr),
+			 ztest_unit_test(test_prefix_timeout),
+			 ztest_unit_test(test_prefix_timeout_long),
+			 ztest_unit_test(test_dad_timeout),
+			 ztest_unit_test(test_src_localaddr_recv),
+			 ztest_unit_test(test_dst_localaddr_recv),
+			 ztest_unit_test(test_dst_iface_scope_mcast_recv),
+			 ztest_unit_test(test_dst_iface_scope_mcast_send),
+			 ztest_unit_test(test_dst_zero_scope_mcast_recv),
+			 ztest_unit_test(test_dst_site_scope_mcast_recv_drop),
+			 ztest_unit_test(test_dst_site_scope_mcast_recv_ok),
+			 ztest_unit_test(test_dst_org_scope_mcast_recv)
+			 );
+	ztest_run_test_suite(test_ipv6_fn);
 }

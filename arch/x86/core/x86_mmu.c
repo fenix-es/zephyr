@@ -7,6 +7,8 @@
 #include <kernel.h>
 #include <mmustructs.h>
 #include <linker/linker-defs.h>
+#include <kernel_internal.h>
+#include <init.h>
 
 /* Common regions for all x86 processors.
  * Peripheral I/O ranges configured at the SOC level
@@ -23,7 +25,10 @@ MMU_BOOT_REGION((u32_t)&_image_rom_start, (u32_t)&_image_rom_size,
 MMU_BOOT_REGION((u32_t)&__app_ram_start, (u32_t)&__app_ram_size,
 		MMU_ENTRY_WRITE | MMU_ENTRY_USER | MMU_ENTRY_EXECUTE_DISABLE);
 #endif
-
+#ifdef CONFIG_APP_SHARED_MEM
+MMU_BOOT_REGION((u32_t)&_app_smem_start, (u32_t)&_app_smem_size,
+		MMU_ENTRY_WRITE | MMU_ENTRY_USER | MMU_ENTRY_EXECUTE_DISABLE);
+#endif
 /* __kernel_ram_size includes all unused memory, which is used for heaps.
  * User threads cannot access this unless granted at runtime. This is done
  * automatically for stacks.
@@ -41,7 +46,7 @@ void _x86_mmu_get_flags(void *addr,
 	*pde_flags = (x86_page_entry_data_t)(X86_MMU_GET_PDE(addr)->value &
 				~(x86_page_entry_data_t)MMU_PDE_PAGE_TABLE_MASK);
 
-	if (*pde_flags & MMU_ENTRY_PRESENT) {
+	if ((*pde_flags & MMU_ENTRY_PRESENT) != 0) {
 		*pte_flags = (x86_page_entry_data_t)
 			(X86_MMU_GET_PTE(addr)->value &
 			 ~(x86_page_entry_data_t)MMU_PTE_PAGE_MASK);
@@ -77,11 +82,11 @@ int _arch_buffer_validate(void *addr, size_t size, int write)
 #ifdef CONFIG_X86_PAE_MODE
 	for (pdpte = start_pdpte_num; pdpte <= end_pdpte_num; pdpte++) {
 		if (pdpte != start_pdpte_num) {
-			start_pde_num = 0;
+			start_pde_num = 0U;
 		}
 
 		if (pdpte != end_pdpte_num) {
-			end_pde_num = 0;
+			end_pde_num = 0U;
 		} else {
 			end_pde_num = MMU_PDE_NUM((char *)addr + size - 1);
 		}
@@ -120,7 +125,7 @@ int _arch_buffer_validate(void *addr, size_t size, int write)
 			 * of the buffer.
 			 */
 			if (pde != end_pde_num) {
-				ending_pte_num = 1023;
+				ending_pte_num = 1023U;
 			} else {
 				ending_pte_num =
 					MMU_PAGE_NUM((char *)addr + size - 1);
@@ -130,7 +135,7 @@ int _arch_buffer_validate(void *addr, size_t size, int write)
 			 * will have the start pte number as zero.
 			 */
 			if (pde != start_pde_num) {
-				starting_pte_num = 0;
+				starting_pte_num = 0U;
 			}
 
 			pte_value.value = 0xFFFFFFFF;
@@ -186,7 +191,7 @@ void _x86_mmu_set_flags(void *ptr,
 	__ASSERT(!(addr & MMU_PAGE_MASK), "unaligned address provided");
 	__ASSERT(!(size & MMU_PAGE_MASK), "unaligned size provided");
 
-	while (size) {
+	while (size != 0) {
 
 #ifdef CONFIG_X86_PAE_MODE
 		/* TODO we're not generating 2MB entries at the moment */
@@ -204,3 +209,128 @@ void _x86_mmu_set_flags(void *ptr,
 		addr += MMU_PAGE_SIZE;
 	}
 }
+
+#ifdef CONFIG_X86_USERSPACE
+
+/* Helper macros needed to be passed to x86_update_mem_domain_pages */
+#define X86_MEM_DOMAIN_SET_PAGES   (0U)
+#define X86_MEM_DOMAIN_RESET_PAGES (1U)
+/* Pass 1 to page_conf if reset of mem domain pages is needed else pass a 0*/
+static inline void _x86_mem_domain_pages_update(struct k_mem_domain *mem_domain,
+						u32_t page_conf)
+{
+	u32_t partition_index;
+	u32_t total_partitions;
+	struct k_mem_partition partition;
+	u32_t partitions_count;
+
+	/* If mem_domain doesn't point to a valid location return.*/
+	if (mem_domain == NULL) {
+		goto out;
+	}
+
+	/* Get the total number of partitions*/
+	total_partitions = mem_domain->num_partitions;
+
+	/* Iterate over all the partitions for the given mem_domain
+	 * For x86: interate over all the partitions and set the
+	 * required flags in the correct MMU page tables.
+	 */
+	partitions_count = 0U;
+	for (partition_index = 0U;
+	     partitions_count < total_partitions;
+	     partition_index++) {
+
+		/* Get the partition info */
+		partition = mem_domain->partitions[partition_index];
+		if (partition.size == 0) {
+			continue;
+		}
+		partitions_count++;
+		if (page_conf == X86_MEM_DOMAIN_SET_PAGES) {
+			/* Set the partition attributes */
+			_x86_mmu_set_flags((void *)partition.start,
+					   partition.size,
+					   partition.attr,
+					   K_MEM_PARTITION_PERM_MASK);
+		} else {
+			/* Reset the pages to supervisor RW only */
+			_x86_mmu_set_flags((void *)partition.start,
+					   partition.size,
+					   K_MEM_PARTITION_P_RW_U_NA,
+					   K_MEM_PARTITION_PERM_MASK);
+		}
+	}
+ out:
+	return;
+}
+
+/* Load the partitions of the thread. */
+void _arch_mem_domain_configure(struct k_thread *thread)
+{
+	_x86_mem_domain_pages_update(thread->mem_domain_info.mem_domain,
+				     X86_MEM_DOMAIN_SET_PAGES);
+}
+
+/* Destroy or reset the mmu page tables when necessary.
+ * Needed when either swap takes place or k_mem_domain_destroy is called.
+ */
+void _arch_mem_domain_destroy(struct k_mem_domain *domain)
+{
+	_x86_mem_domain_pages_update(domain, X86_MEM_DOMAIN_RESET_PAGES);
+}
+
+/* Reset/destroy one partition spcified in the argument of the API. */
+void _arch_mem_domain_partition_remove(struct k_mem_domain *domain,
+				       u32_t  partition_id)
+{
+	struct k_mem_partition partition;
+
+	if (domain == NULL) {
+		goto out;
+	}
+
+	__ASSERT(partition_id <= domain->num_partitions,
+		 "invalid partitions");
+
+	partition = domain->partitions[partition_id];
+
+	_x86_mmu_set_flags((void *)partition.start,
+			   partition.size,
+			   K_MEM_PARTITION_P_RW_U_NA,
+			   K_MEM_PARTITION_PERM_MASK);
+
+ out:
+	return;
+}
+
+int _arch_mem_domain_max_partitions_get(void)
+{
+	return CONFIG_MAX_DOMAIN_PARTITIONS;
+}
+
+#ifdef CONFIG_NEWLIB_LIBC
+static int newlib_mmu_prepare(struct device *unused)
+{
+	ARG_UNUSED(unused);
+	void *heap_base;
+	size_t heap_size;
+
+	z_newlib_get_heap_bounds(&heap_base, &heap_size);
+
+	/* Set up the newlib heap area as a globally user-writable region.
+	 * We can't do this at build time with MMU_BOOT_REGION() as the _end
+	 * pointer shifts significantly between build phases due to the
+	 * introduction of page tables.
+	 */
+	_x86_mmu_set_flags(heap_base, heap_size,
+			   MMU_ENTRY_PRESENT | MMU_ENTRY_WRITE |
+			   MMU_ENTRY_USER,
+			   MMU_PTE_P_MASK | MMU_PTE_RW_MASK | MMU_PTE_US_MASK);
+
+	return 0;
+}
+
+SYS_INIT(newlib_mmu_prepare, APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
+#endif /* CONFIG_NEWLIB_LIBC */
+#endif	/* CONFIG_X86_USERSPACE*/

@@ -8,14 +8,15 @@
  * @file
  * @brief Public interface for configuring interrupts
  */
-#ifndef _IRQ_H_
-#define _IRQ_H_
+#ifndef ZEPHYR_INCLUDE_IRQ_H_
+#define ZEPHYR_INCLUDE_IRQ_H_
 
 /* Pull in the arch-specific implementations */
 #include <arch/cpu.h>
 
 #ifndef _ASMLANGUAGE
 #include <toolchain.h>
+#include <zephyr/types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,6 +49,31 @@ extern "C" {
  */
 #define IRQ_CONNECT(irq_p, priority_p, isr_p, isr_param_p, flags_p) \
 	_ARCH_IRQ_CONNECT(irq_p, priority_p, isr_p, isr_param_p, flags_p)
+
+/**
+ * Configure a dynamic interrupt.
+ *
+ * Use this instead of IRQ_CONNECT() if arguments cannot be known at build time.
+ *
+ * @param irq IRQ line number
+ * @param priority Interrupt priority
+ * @param routine Interrupt service routine
+ * @param parameter ISR parameter
+ * @param flags Arch-specific IRQ configuration flags
+ *
+ * @return The vector assigned to this interrupt
+ */
+extern int _arch_irq_connect_dynamic(unsigned int irq, unsigned int priority,
+			     void (*routine)(void *parameter), void *parameter,
+			     u32_t flags);
+
+static inline int
+irq_connect_dynamic(unsigned int irq, unsigned int priority,
+		    void (*routine)(void *parameter), void *parameter,
+		    u32_t flags)
+{
+	return _arch_irq_connect_dynamic(irq, priority, routine, parameter, flags);
+}
 
 /**
  * @brief Initialize a 'direct' interrupt handler.
@@ -190,7 +216,12 @@ extern "C" {
  *
  * @return Lock-out key.
  */
+#ifdef CONFIG_SMP
+unsigned int _smp_global_lock(void);
+#define irq_lock() _smp_global_lock()
+#else
 #define irq_lock() _arch_irq_lock()
+#endif
 
 /**
  * @brief Unlock interrupts.
@@ -206,7 +237,12 @@ extern "C" {
  *
  * @return N/A
  */
+#ifdef CONFIG_SMP
+void _smp_global_unlock(unsigned int key);
+#define irq_unlock(key) _smp_global_unlock(key)
+#else
 #define irq_unlock(key) _arch_irq_unlock(key)
+#endif
 
 /**
  * @brief Enable an IRQ.
@@ -250,4 +286,4 @@ extern "C" {
 #endif
 
 #endif /* ASMLANGUAGE */
-#endif /* _IRQ_H_ */
+#endif /* ZEPHYR_INCLUDE_IRQ_H_ */

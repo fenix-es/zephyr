@@ -78,25 +78,27 @@ Supported Features
 The Zephyr 96b_carbon board configuration supports the following hardware
 features:
 
-+-----------+------------+-------------------------------------+
-| Interface | Controller | Driver/Component                    |
-+===========+============+=====================================+
-| NVIC      | on-chip    | nested vector interrupt controller  |
-+-----------+------------+-------------------------------------+
-| SYSTICK   | on-chip    | system clock                        |
-+-----------+------------+-------------------------------------+
-| UART      | on-chip    | serial port                         |
-+-----------+------------+-------------------------------------+
-| GPIO      | on-chip    | gpio                                |
-+-----------+------------+-------------------------------------+
-| PINMUX    | on-chip    | pinmux                              |
-+-----------+------------+-------------------------------------+
-| FLASH     | on-chip    | flash                               |
-+-----------+------------+-------------------------------------+
-| SPI       | on-chip    | spi                                 |
-+-----------+------------+-------------------------------------+
-| I2C       | on-chip    | i2c                                 |
-+-----------+------------+-------------------------------------+
++------------+------------+-------------------------------------+
+| Interface  | Controller | Driver/Component                    |
++============+============+=====================================+
+| NVIC       | on-chip    | nested vector interrupt controller  |
++------------+------------+-------------------------------------+
+| SYSTICK    | on-chip    | system clock                        |
++------------+------------+-------------------------------------+
+| UART       | on-chip    | serial port                         |
++------------+------------+-------------------------------------+
+| GPIO       | on-chip    | gpio                                |
++------------+------------+-------------------------------------+
+| PINMUX     | on-chip    | pinmux                              |
++------------+------------+-------------------------------------+
+| FLASH      | on-chip    | flash                               |
++------------+------------+-------------------------------------+
+| SPI        | on-chip    | spi                                 |
++------------+------------+-------------------------------------+
+| I2C        | on-chip    | i2c                                 |
++------------+------------+-------------------------------------+
+| USB OTG FS | on-chip    | USB device                          |
++------------+------------+-------------------------------------+
 
 More details about the board can be found at `96Boards website`_.
 
@@ -216,6 +218,31 @@ I2C
 - I2C2_SCL : PB10
 - I2C2_SDA : PB3
 
+SPI
+---
+
+96Boards Carbon board has up to 2 SPIs. SPI1 is used for Bluetooth communication
+over HCI. The default SPI mapping for Zephyr is:
+
+- SPI1_NSS  : PA4
+- SPI1_SCK  : PA5
+- SPI1_MISO : PA6
+- SPI1_MOSI : PA7
+- SPI2_NSS  : PB12
+- SPI2_SCK  : PB13
+- SPI2_MISO : PB14
+- SPI2_MOSI : PB15
+
+USB
+===
+
+96Boards Carbon board has a USB OTG dual-role device (DRD) controller that
+supports both device and host functions through its mini "OTG" USB connector.
+Only USB device functions are supported in Zephyr at the moment.
+
+- USB_DM : PA11
+- USB_DP : PA12
+
 Programming and Debugging
 *************************
 
@@ -238,21 +265,6 @@ debian/ubuntu can be quite old, so you might have to build dfu-util from source.
 
 Flashing an Application to 96Boards Carbon
 ------------------------------------------
-
-The sample application :ref:`hello_world` is being used in this tutorial:
-
-.. code-block:: console
-
-   $<zephyr_root_path>/samples/hello_world
-
-To build the Zephyr kernel and application, enter:
-
-.. code-block:: console
-
-   $ cd <zephyr_root_path>
-   $ source zephyr-env.sh
-   $ cd $ZEPHYR_BASE/samples/hello_world/
-   $ make BOARD=96b_carbon
 
 Connect the micro-USB cable to the USB OTG Carbon port and to your computer.
 The board should power ON. Force the board into DFU mode by keeping the BOOT0
@@ -286,11 +298,13 @@ You should see following confirmation on your Linux host:
    usb 1-2.1: Manufacturer: STMicroelectronics
    usb 1-2.1: SerialNumber: 3574364C3034
 
-Flash a new application to the board:
+Then build and flash an application. Here is an example for the
+:ref:`hello_world` application.
 
-.. code-block:: console
-
-   $ sudo dfu-util -d [0483:df11] -a 0 -D outdir/96b_carbon/zephyr.bin -s 0x08000000
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: 96b_carbon
+   :goals: build flash
 
 Connect the micro-USB cable to the USB UART (FTDI) port and to your computer.
 Run your favorite terminal program to listen for output.
@@ -324,18 +338,14 @@ in general, see :ref:`build_an_application`.
 
 2. Install the dfu-util flashing app, as described above.
 
-3. Build the ``samples/bluetooth/ipsp`` application for 96b_carbon::
+3. Build and flash the ``samples/bluetooth/ipsp`` application for
+   96b_carbon. See the instructions above for how to put your board
+   into DFU mode if you haven't done this before:
 
-     $ cd <zephyr_root_path>
-     $ source zephyr-env.sh
-     $ cd $ZEPHYR_BASE/samples/bluetooth/ipsp/
-     $ make BOARD=96b_carbon
-
-4. Flash the compiled application using dfu-util. See the instructions
-   above for how to put your board into DFU mode if you haven't done
-   this before::
-
-     $ make BOARD=96b_carbon flash
+   .. zephyr-app-commands::
+      :zephyr-app: samples/bluetooth/ipsp
+      :board: 96b_carbon
+      :goals: build flash
 
 5. Refer to the instructions in :ref:`bluetooth-ipsp-sample` for how
    to verify functionality.

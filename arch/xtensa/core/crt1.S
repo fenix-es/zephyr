@@ -49,16 +49,14 @@
 	.align 4
 
 _start:
-__start:
 	/*
 	 *  _start is typically NOT at the beginning of the text segment --
-	 *  it is always called from either the reset vector or other code
-	 *  that does equivalent initialization (such as crt0-app.S).
+	 *  it is always called from either the reset vector (__start) or other
+	 *  code that does equivalent initialization (such as crt0-app.S).
 	 *
 	 *  Assumptions on entry to _start:
 	 *	- low (level-one) and medium priority interrupts are disabled
-	 *	  via PS.INTLEVEL and/or INTENABLE (PS.INTLEVEL is expected to
-	 *	  be zeroed, to potentially enable them, before calling main)
+	 *	  via PS.INTLEVEL and/or INTENABLE
 	 *	- C calling context not initialized:
 	 *	  - PS not initialized
 	 *	  - SP not initialized
@@ -89,16 +87,16 @@ __start:
 
 	/*
 	 *  Now that sp (a1) is set, we can set PS as per the application (user
-	 *  vector mode, enable interrupts, enable window exceptions if
+	 *  vector mode, disable interrupts, enable window exceptions if
 	 *  applicable).
 	 */
 #if XCHAL_HAVE_EXCEPTIONS
 # ifdef __XTENSA_CALL0_ABI__
-	/* PS.WOE = 0, PS.UM = 1, PS.EXCM = 0, PS.INTLEVEL = 0 */
-	movi	a3, PS_UM
+	/* PS.WOE = 0, PS.UM = 1, PS.EXCM = 0, PS.INTLEVEL = 15 */
+	movi	a3, PS_UM|PS_INTLEVEL(15)
 # else
-	/* PS.WOE = 1, PS.UM = 1, PS.EXCM = 0, PS.INTLEVEL = 0 */
-	movi	a3, PS_UM|PS_WOE
+	/* PS.WOE = 1, PS.UM = 1, PS.EXCM = 0, PS.INTLEVEL = 15 */
+	movi	a3, PS_UM|PS_WOE|PS_INTLEVEL(15)
 # endif
 	wsr	a3, PS
 	rsync

@@ -29,44 +29,60 @@ described in :ref:`networking_with_qemu`.
 There are configuration files for different boards and setups in the
 echo-server directory:
 
-- :file:`prj_arduino_101.conf`
-  Use this for Arduino 101 with external enc28j60 ethernet board.
+- :file:`prj.conf`
+  Generic config file, normally you should use this.
 
-- :file:`prj_bt.conf`
-  Use this for Bluetooth IPSP connectivity.
+- :file:`overlay-frdm_k64f_mcr20a.conf`
+  This overlay config enables support for IEEE 802.15.4 mcr20a and frdm_k64f
 
-- :file:`prj_cc2520.conf`
-  Use this for devices that have support for IEEE 802.15.4 cc2520 chip.
+- :file:`overlay-ot.conf`
+  This overlay config enables support for OpenThread.
 
-- :file:`prj_frdm_k64f_cc2520.conf`
-  Use this for FRDM-K64F board with external IEEE 802.15.4 cc2520 board.
+- :file:`overlay-802154.conf`
+  This overlay config enables support for native IEEE 802.15.4 connectivity.
+  Note, that by default IEEE 802.15.4 L2 uses unacknowledged communication. To
+  improve connection reliability, acknowledgments can be enabled with shell
+  command: ``ieee802154 ack set``.
 
-- :file:`prj_frdm_k64f.conf`
-  Use this for FRDM-K64F board with built-in ethernet.
+- :file:`overlay-enc28j60.conf`
+  This overlay config enables support for enc28j60 ethernet board. This
+  add-on board can be used for example with Arduino 101 board.
 
-- :file:`prj_frdm_k64f_mcr20a.conf`
-  Use this for FRDM-K64F board with IEEE 802.15.4 mcr20a board.
+- :file:`overlay-cc2520.conf`
+  This overlay config enables support for IEEE 802.15.4 cc2520 chip.
 
-- :file:`prj_qemu_802154.conf`
-  Use this when simulating IEEE 802.15.4 network using two QEMU's that
-  are connected together.
+- :file:`overlay-bt.conf`
+  This overlay config enables support for Bluetooth IPSP connectivity.
 
-- :file:`prj_qemu_cortex_m3.conf`
-  Use this for ARM QEMU.
+- :file:`overlay-qemu_802154.conf`
+  This overlay config enables support for two QEMU's when simulating
+  IEEE 802.15.4 network that are connected together.
 
-- :file:`prj_qemu_x86.conf`
-  Use this for x86 QEMU.
+- :file:`overlay-tls.conf`
+  This overlay config enables support for TLS.
 
-- :file:`prj_sam_e70_xplained.conf`
-  Use this for Atmel SMART SAM E70 Xplained board with ethernet.
+- :file:`overlay-netusb.conf`
+  This overlay config enables support for Ethernet over USB setup with
+  supported boards. The setup is described in :ref:`usb_device_networking_setup`
 
 Build echo-server sample application like this:
 
-.. code-block:: console
+.. zephyr-app-commands::
+   :zephyr-app: samples/net/echo_server
+   :board: <board to use>
+   :conf: <config file to use>
+   :goals: build
+   :compact:
 
-    $ cd $ZEPHYR_BASE/samples/net/echo_server
-    $ make pristine && make CONF_FILE=<your desired conf file> \
-      BOARD=<board to use>
+Example building for the FRDM-K64F with TI CC2520 support:
+
+.. zephyr-app-commands::
+   :zephyr-app: samples/net/echo_server
+   :host-os: unix
+   :board: frdm_k64f
+   :conf: "prj.conf overlay-frdm_k64f_cc2520.conf"
+   :goals: run
+   :compact:
 
 Make can select the default configuration file based on the BOARD you've
 specified automatically so you might not always need to mention it.
@@ -81,10 +97,12 @@ To use QEMU for testing, follow the :ref:`networking_with_qemu` guide.
 
 Run echo-server application in QEMU:
 
-.. code-block:: console
-
-    $ cd $ZEPHYR_BASE/samples/net/echo_server
-    $ make pristine && make run
+.. zephyr-app-commands::
+   :zephyr-app: samples/net/echo_server
+   :host-os: unix
+   :board: qemu_x86
+   :goals: run
+   :compact:
 
 In a terminal window:
 

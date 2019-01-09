@@ -2,8 +2,6 @@
   ******************************************************************************
   * @file    stm32f4xx_ll_dma.h
   * @author  MCD Application Team
-  * @version V1.7.1
-  * @date    14-April-2017
   * @brief   Header file of DMA LL module.
   ******************************************************************************
   * @attention
@@ -158,10 +156,10 @@ typedef struct
                                         This parameter can be a value of @ref DMA_LL_EC_PRIORITY
 
                                         This feature can be modified afterwards using unitary function @ref LL_DMA_SetStreamPriorityLevel(). */
-                                        
+
   uint32_t FIFOMode;               /*!< Specifies if the FIFO mode or Direct mode will be used for the specified stream.
                                         This parameter can be a value of @ref DMA_LL_FIFOMODE
-                                        @note The Direct mode (FIFO mode disabled) cannot be used if the 
+                                        @note The Direct mode (FIFO mode disabled) cannot be used if the
                                         memory-to-memory data transfer is configured on the selected stream
 
                                         This feature can be modified afterwards using unitary functions @ref LL_DMA_EnableFifoMode() or @ref LL_DMA_EnableFifoMode() . */
@@ -171,19 +169,19 @@ typedef struct
 
                                         This feature can be modified afterwards using unitary function @ref LL_DMA_SetFIFOThreshold(). */
 
-  uint32_t MemBurst;               /*!< Specifies the Burst transfer configuration for the memory transfers. 
+  uint32_t MemBurst;               /*!< Specifies the Burst transfer configuration for the memory transfers.
                                         It specifies the amount of data to be transferred in a single non interruptible
                                         transaction.
-                                        This parameter can be a value of @ref DMA_LL_EC_MBURST 
-                                        @note The burst mode is possible only if the address Increment mode is enabled. 
+                                        This parameter can be a value of @ref DMA_LL_EC_MBURST
+                                        @note The burst mode is possible only if the address Increment mode is enabled.
 
                                         This feature can be modified afterwards using unitary function @ref LL_DMA_SetMemoryBurstxfer(). */
 
-  uint32_t PeriphBurst;            /*!< Specifies the Burst transfer configuration for the peripheral transfers. 
-                                        It specifies the amount of data to be transferred in a single non interruptible 
-                                        transaction. 
+  uint32_t PeriphBurst;            /*!< Specifies the Burst transfer configuration for the peripheral transfers.
+                                        It specifies the amount of data to be transferred in a single non interruptible
+                                        transaction.
                                         This parameter can be a value of @ref DMA_LL_EC_PBURST
-                                        @note The burst mode is possible only if the address Increment mode is enabled. 
+                                        @note The burst mode is possible only if the address Increment mode is enabled.
 
                                         This feature can be modified afterwards using unitary function @ref LL_DMA_SetPeriphBurstxfer(). */
 
@@ -336,7 +334,7 @@ typedef struct
 /**
   * @}
   */
-  
+
 /** @defgroup DMA_LL_FIFOMODE DMA_LL_FIFOMODE
   * @{
   */
@@ -344,7 +342,7 @@ typedef struct
 #define LL_DMA_FIFOMODE_ENABLE            DMA_SxFCR_DMDIS                         /*!< FIFO mode enable  */
 /**
   * @}
-  */  
+  */
 
 /** @defgroup DMA_LL_EC_FIFOSTATUS_0 FIFOSTATUS 0
   * @{
@@ -369,7 +367,7 @@ typedef struct
 /**
   * @}
   */
-    
+
 /** @defgroup DMA_LL_EC_CURRENTTARGETMEM CURRENTTARGETMEM
   * @{
   */
@@ -1158,7 +1156,7 @@ __STATIC_INLINE uint32_t LL_DMA_GetPeriphBurstxfer(DMA_TypeDef *DMAx, uint32_t S
 
 /**
   * @brief Set Current target (only in double buffer mode) to Memory 1 or Memory 0.
-  * @rmtoll CR          CT           LL_DMA_SetCurrentTargetMem 
+  * @rmtoll CR          CT           LL_DMA_SetCurrentTargetMem
   * @param  DMAx DMAx Instance
   * @param  Stream This parameter can be one of the following values:
   *         @arg @ref LL_DMA_STREAM_0
@@ -1181,7 +1179,7 @@ __STATIC_INLINE void LL_DMA_SetCurrentTargetMem(DMA_TypeDef *DMAx, uint32_t Stre
 
 /**
   * @brief Set Current target (only in double buffer mode) to Memory 1 or Memory 0.
-  * @rmtoll CR          CT           LL_DMA_GetCurrentTargetMem 
+  * @rmtoll CR          CT           LL_DMA_GetCurrentTargetMem
   * @param  DMAx DMAx Instance
   * @param  Stream This parameter can be one of the following values:
   *         @arg @ref LL_DMA_STREAM_0
@@ -1223,7 +1221,7 @@ __STATIC_INLINE void LL_DMA_EnableDoubleBufferMode(DMA_TypeDef *DMAx, uint32_t S
 
 /**
   * @brief Disable the double buffer mode.
-  * @rmtoll CR          DBM           LL_DMA_DisableDoubleBufferMode 
+  * @rmtoll CR          DBM           LL_DMA_DisableDoubleBufferMode
   * @param  DMAx DMAx Instance
   * @param  Stream This parameter can be one of the following values:
   *         @arg @ref LL_DMA_STREAM_0
@@ -1289,7 +1287,7 @@ __STATIC_INLINE void LL_DMA_DisableFifoMode(DMA_TypeDef *DMAx, uint32_t Stream)
 
 /**
   * @brief Enable Fifo mode.
-  * @rmtoll FCR          DMDIS          LL_DMA_EnableFifoMode 
+  * @rmtoll FCR          DMDIS          LL_DMA_EnableFifoMode
   * @param  DMAx DMAx Instance
   * @param  Stream This parameter can be one of the following values:
   *         @arg @ref LL_DMA_STREAM_0
@@ -1388,7 +1386,7 @@ __STATIC_INLINE void LL_DMA_ConfigFifo(DMA_TypeDef *DMAx, uint32_t Stream, uint3
 /**
   * @brief Configure the Source and Destination addresses.
   * @note   This API must not be called when the DMA stream is enabled.
-  * @rmtoll M0AR        M0A         LL_DMA_ConfigAddresses\n 
+  * @rmtoll M0AR        M0A         LL_DMA_ConfigAddresses\n
   *         PAR         PA          LL_DMA_ConfigAddresses
   * @param  DMAx DMAx Instance
   * @param  Stream This parameter can be one of the following values:
@@ -1735,7 +1733,7 @@ __STATIC_INLINE uint32_t LL_DMA_IsActiveFlag_HT6(DMA_TypeDef *DMAx)
 __STATIC_INLINE uint32_t LL_DMA_IsActiveFlag_HT7(DMA_TypeDef *DMAx)
 {
   return (READ_BIT(DMAx->HISR ,DMA_HISR_HTIF7)==(DMA_HISR_HTIF7));
-} 
+}
 
 /**
   * @brief Get Stream 0 transfer complete flag.
@@ -1823,7 +1821,7 @@ __STATIC_INLINE uint32_t LL_DMA_IsActiveFlag_TC6(DMA_TypeDef *DMAx)
 __STATIC_INLINE uint32_t LL_DMA_IsActiveFlag_TC7(DMA_TypeDef *DMAx)
 {
   return (READ_BIT(DMAx->HISR ,DMA_HISR_TCIF7)==(DMA_HISR_TCIF7));
-} 
+}
 
 /**
   * @brief Get Stream 0 transfer error flag.
@@ -1911,7 +1909,7 @@ __STATIC_INLINE uint32_t LL_DMA_IsActiveFlag_TE6(DMA_TypeDef *DMAx)
 __STATIC_INLINE uint32_t LL_DMA_IsActiveFlag_TE7(DMA_TypeDef *DMAx)
 {
   return (READ_BIT(DMAx->HISR ,DMA_HISR_TEIF7)==(DMA_HISR_TEIF7));
-} 
+}
 
 /**
   * @brief Get Stream 0 direct mode error flag.
@@ -2097,7 +2095,7 @@ __STATIC_INLINE uint32_t LL_DMA_IsActiveFlag_FE7(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_HT0(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CHTIF0);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CHTIF0);
 }
 
 /**
@@ -2108,7 +2106,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_HT0(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_HT1(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CHTIF1);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CHTIF1);
 }
 
 /**
@@ -2119,7 +2117,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_HT1(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_HT2(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CHTIF2);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CHTIF2);
 }
 
 /**
@@ -2130,7 +2128,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_HT2(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_HT3(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CHTIF3);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CHTIF3);
 }
 
 /**
@@ -2141,7 +2139,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_HT3(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_HT4(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CHTIF4);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CHTIF4);
 }
 
 /**
@@ -2152,7 +2150,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_HT4(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_HT5(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CHTIF5);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CHTIF5);
 }
 
 /**
@@ -2163,7 +2161,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_HT5(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_HT6(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CHTIF6);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CHTIF6);
 }
 
 /**
@@ -2174,7 +2172,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_HT6(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_HT7(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CHTIF7);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CHTIF7);
 }
 
 /**
@@ -2185,7 +2183,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_HT7(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TC0(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CTCIF0);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CTCIF0);
 }
 
 /**
@@ -2196,7 +2194,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TC0(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TC1(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CTCIF1);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CTCIF1);
 }
 
 /**
@@ -2207,7 +2205,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TC1(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TC2(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CTCIF2);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CTCIF2);
 }
 
 /**
@@ -2218,7 +2216,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TC2(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TC3(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CTCIF3);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CTCIF3);
 }
 
 /**
@@ -2229,7 +2227,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TC3(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TC4(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CTCIF4);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CTCIF4);
 }
 
 /**
@@ -2240,7 +2238,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TC4(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TC5(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CTCIF5);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CTCIF5);
 }
 
 /**
@@ -2251,7 +2249,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TC5(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TC6(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CTCIF6);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CTCIF6);
 }
 
 /**
@@ -2262,7 +2260,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TC6(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TC7(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CTCIF7);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CTCIF7);
 }
 
 /**
@@ -2273,7 +2271,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TC7(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TE0(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CTEIF0);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CTEIF0);
 }
 
 /**
@@ -2284,7 +2282,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TE0(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TE1(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CTEIF1);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CTEIF1);
 }
 
 /**
@@ -2295,7 +2293,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TE1(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TE2(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CTEIF2);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CTEIF2);
 }
 
 /**
@@ -2306,7 +2304,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TE2(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TE3(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CTEIF3);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CTEIF3);
 }
 
 /**
@@ -2317,7 +2315,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TE3(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TE4(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CTEIF4);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CTEIF4);
 }
 
 /**
@@ -2328,7 +2326,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TE4(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TE5(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CTEIF5);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CTEIF5);
 }
 
 /**
@@ -2339,7 +2337,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TE5(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TE6(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CTEIF6);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CTEIF6);
 }
 
 /**
@@ -2350,7 +2348,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TE6(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_TE7(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CTEIF7);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CTEIF7);
 }
 
 /**
@@ -2361,7 +2359,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_TE7(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_DME0(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CDMEIF0);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CDMEIF0);
 }
 
 /**
@@ -2372,7 +2370,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_DME0(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_DME1(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CDMEIF1);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CDMEIF1);
 }
 
 /**
@@ -2383,7 +2381,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_DME1(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_DME2(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CDMEIF2);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CDMEIF2);
 }
 
 /**
@@ -2394,7 +2392,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_DME2(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_DME3(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CDMEIF3);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CDMEIF3);
 }
 
 /**
@@ -2405,7 +2403,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_DME3(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_DME4(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CDMEIF4);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CDMEIF4);
 }
 
 /**
@@ -2416,7 +2414,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_DME4(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_DME5(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CDMEIF5);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CDMEIF5);
 }
 
 /**
@@ -2427,7 +2425,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_DME5(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_DME6(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CDMEIF6);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CDMEIF6);
 }
 
 /**
@@ -2438,7 +2436,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_DME6(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_DME7(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CDMEIF7);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CDMEIF7);
 }
 
 /**
@@ -2449,7 +2447,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_DME7(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_FE0(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CFEIF0);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CFEIF0);
 }
 
 /**
@@ -2460,7 +2458,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_FE0(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_FE1(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CFEIF1);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CFEIF1);
 }
 
 /**
@@ -2471,7 +2469,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_FE1(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_FE2(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CFEIF2);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CFEIF2);
 }
 
 /**
@@ -2482,7 +2480,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_FE2(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_FE3(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->LIFCR , DMA_LIFCR_CFEIF3);
+  WRITE_REG(DMAx->LIFCR , DMA_LIFCR_CFEIF3);
 }
 
 /**
@@ -2493,7 +2491,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_FE3(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_FE4(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CFEIF4);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CFEIF4);
 }
 
 /**
@@ -2504,7 +2502,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_FE4(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_FE5(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CFEIF5);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CFEIF5);
 }
 
 /**
@@ -2515,7 +2513,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_FE5(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_FE6(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CFEIF6);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CFEIF6);
 }
 
 /**
@@ -2526,7 +2524,7 @@ __STATIC_INLINE void LL_DMA_ClearFlag_FE6(DMA_TypeDef *DMAx)
   */
 __STATIC_INLINE void LL_DMA_ClearFlag_FE7(DMA_TypeDef *DMAx)
 {
-  SET_BIT(DMAx->HIFCR , DMA_HIFCR_CFEIF7);
+  WRITE_REG(DMAx->HIFCR , DMA_HIFCR_CFEIF7);
 }
 
 /**

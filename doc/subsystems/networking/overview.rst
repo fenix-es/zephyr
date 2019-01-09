@@ -51,6 +51,10 @@ can be disabled if not needed.
   compatible API is implemented. Both blocking and non-blocking DGRAM (UDP)
   and STREAM (TCP) sockets are supported.
 
+* **Secure Sockets API** Experimental support for TLS/DTLS secure protocols and
+  configuration options for sockets API. Secure functions for the implementation
+  are provided by mbedTLS library.
+
 * **HTTP** Hypertext Transfer Protocol (RFC 2116) is supported. A simple
   library is provided that applications can use. Sample applications are
   implemented for :ref:`http-client-sample` and :ref:`http-server-sample`.
@@ -65,9 +69,12 @@ can be disabled if not needed.
 
 * **CoAP** Constrained Application Protocol (RFC 7252) is supported.
   Both :ref:`coap-client-sample` and :ref:`coap-server-sample` sample
-  applications are implemented. A :ref:`coaps-client-sample` and
-  :ref:`coaps-server-sample` using DTLS (Datagram Transport Layer Security)
-  (RFC 6347) are also implemented.
+  applications are implemented.
+
+* **CoAP over Sockets** Constrained Application Protocol (RFC 7252) is supported
+  over socket based applications or higher layer protocols.
+  Both :ref:`coap-client-sock-sample` and :ref:`coap-server-sock-sample`
+  sample applications are implemented.
 
 * **LWM2M** OMA Lightweight Machine-to-Machine Protocol (V1.0 Feb 2017) is
   supported via the "Register Device" API (Register, De-Register and Update)
@@ -99,6 +106,23 @@ can be disabled if not needed.
   is even possible to have zero-copy data path from application to device
   driver.
 
+* **Virtual LAN support.** Virtual LANs (VLANs) allow partitioning of physical
+  ethernet networks into logical networks. See :ref:`vlan-support` for more
+  details.
+
+* **Network traffic classification.** The sent and received network packets can
+  be prioritized depending on application needs.
+  See :ref:`traffic-class-support` for more details.
+
+* **Websocket** Websocket (RFC 6455) server side functionality is supported.
+  The HTTP server API will enable websocket support if
+  :option:`CONFIG_WEBSOCKET` is enabled. Client side websocket functionality is
+  currently not supported by the websocket API.
+  See :ref:`websocket-server-sample` for information how to use the API.
+
+* **Time Sensitive Networking.** The gPTP (generalized Precision Time Protocol)
+  is supported. See :ref:`gptp-support` for more details.
+
 Additionally these network technologies (link layers) are supported in
 Zephyr OS v1.7 and later:
 
@@ -112,10 +136,14 @@ Zephyr OS v1.7 and later:
 Source Tree Layout
 ******************
 
-The IP stack source code tree is organized as follows:
+The networking stack source code tree is organized as follows:
 
 ``subsys/net/ip/``
   This is where the IP stack code is located.
+
+``subsys/net/l2/``
+  This is where the IP stack layer 2 code is located. This includes generic
+  support for Bluetooth IPSP adaptation, Ethernet, IEEE 802.15.4 and WiFI.
 
 ``subsys/net/lib/``
   Application-level protocols (DNS, MQTT, etc.) and additional stack

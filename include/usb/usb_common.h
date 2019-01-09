@@ -3,6 +3,7 @@
  *
  * Copyright(c) 2015,2016 Intel Corporation.
  * Copyright(c) 2017 PHYTEC Messtechnik GmbH
+ * Copyright(c) 2018 Nordic Semiconductor ASA
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,8 +40,12 @@
  * This file contains useful constants and macros for the USB applications.
  */
 
-#ifndef USB_COMMON_H_
-#define USB_COMMON_H_
+#include <version.h>
+
+#ifndef ZEPHYR_INCLUDE_USB_USB_COMMON_H_
+#define ZEPHYR_INCLUDE_USB_USB_COMMON_H_
+
+#define BCD(x) ((((x) / 10) << 4) | ((x) / 10))
 
 /* Descriptor size in bytes */
 #define USB_DEVICE_DESC_SIZE		18
@@ -61,10 +66,12 @@
 #define USB_ENDPOINT_DESC		0x05
 #define USB_DEVICE_QUAL_DESC		0x06
 #define USB_INTERFACE_ASSOC_DESC	0x0B
+#define USB_DEVICE_CAPABILITY_DESC	0x10
 #define USB_HID_DESC			0x21
 #define USB_HID_REPORT_DESC		0x22
 #define USB_DFU_FUNCTIONAL_DESC		0x21
 #define USB_ASSOCIATION_DESC		0x0B
+#define USB_BINARY_OBJECT_STORE_DESC	0x0F
 
 /* Useful define */
 #define USB_1_1				0x0110
@@ -72,12 +79,16 @@
 /* Set USB version to 2.1 so that the host will request the BOS descriptor */
 #define USB_2_1				0x0210
 
-#define BCDDEVICE_RELNUM		0x0100
+#define BCDDEVICE_RELNUM		(BCD(KERNEL_VERSION_MAJOR) << 8 | \
+					BCD(KERNEL_VERSION_MINOR))
 
 /* 100mA max power, per 2mA units */
 /* USB 1.1 spec indicates 100mA(max) per unit load, up to 5 loads */
 #define MAX_LOW_POWER			0x32
 #define MAX_HIGH_POWER			0xFA
+
+/* Highest value of Frame Number in SOF packets. */
+#define USB_SOF_MAX			2047
 
 /* bmAttributes:
  * D7:Reserved, always 1,
@@ -95,11 +106,9 @@
 #define WIRELESS_DEVICE_CLASS		0xE0
 #define MISC_CLASS			0xEF
 #define CUSTOM_CLASS			0xFF
-#define DFU_CLASS			0xFE
+#define DFU_DEVICE_CLASS		0xFE
 
 /* Sub-classes */
-#define ACM_SUBCLASS			0x02
-#define CDC_ECM_SUBCLASS		0x06
 #define CDC_NCM_SUBCLASS		0x0d
 #define BOOT_INTERFACE_SUBCLASS		0x01
 #define SCSI_TRANSPARENT_SUBCLASS	0x06
@@ -139,7 +148,7 @@ struct usb_device_descriptor {
 	u8_t bNumConfigurations;
 } __packed;
 
-/** UNICODE String Descriptor */
+/** Unicode (UTF16LE) String Descriptor */
 struct usb_string_descriptor {
 	u8_t bLength;
 	u8_t bDescriptorType;
@@ -193,4 +202,4 @@ struct usb_ep_descriptor {
 	u8_t bInterval;
 } __packed;
 
-#endif /* USB_COMMON_H_ */
+#endif /* ZEPHYR_INCLUDE_USB_USB_COMMON_H_ */

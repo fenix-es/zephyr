@@ -1,4 +1,6 @@
 tests:
-  - test:
-      filter: (CONFIG_UART_CONSOLE and CONFIG_SERIAL_SUPPORT_INTERRUPT)
-      tags: shell
+  shell:
+    min_flash: 64
+    min_ram: 32
+    filter: ( CONFIG_SHELL )
+    tags: shell

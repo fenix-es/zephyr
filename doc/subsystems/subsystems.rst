@@ -11,10 +11,16 @@ to applications.
 
    bluetooth/bluetooth.rst
    c_library
+   dfu
    logging/index
+   tracing/index
+   mgmt
    networking/networking.rst
    power_management.rst
    sensor
-   shell
+   shell/shell
    test/index
    usb/usb.rst
+   settings/settings.rst
+   nvs/nvs.rst
+   disk/sdhc.rst

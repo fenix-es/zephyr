@@ -1,12 +1,11 @@
 sample:
-  description: TBD
-  name: TBD
+  name: CDC ACM USB
 tests:
-  - test_x86:
-      extra_configs:
-        - CONFIG_USB_DEVICE_VID=0xDEAD
-        - CONFIG_USB_DEVICE_PID=0xBEEF
-      build_only: true
-      depends_on: usb_device
-      platform_whitelist: arduino_101
-      tags: usb
+  usb.cdc-acm:
+    depends_on: usb_device
+    tags: usb
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "Wait for DTR"

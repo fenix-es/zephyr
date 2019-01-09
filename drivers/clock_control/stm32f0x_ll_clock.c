@@ -36,7 +36,7 @@ void config_pll_init(LL_UTILS_PLLInitTypeDef *pllinit)
 	/* following SoCs: STM32F070x6, STM32F070xB and STM32F030xC */
 	/* cf Reference manual for more details */
 #if defined(CONFIG_CLOCK_STM32_PLL_SRC_HSI)
-	pllinit->PLLDiv = LL_RCC_PLLSOURCE_HSI_DIV_2;
+	pllinit->PLLDiv = LL_RCC_PLLSOURCE_HSI;
 #else
 	/*
 	 * PLL DIV
@@ -69,7 +69,10 @@ void config_pll_init(LL_UTILS_PLLInitTypeDef *pllinit)
  */
 void config_enable_default_clocks(void)
 {
-	/* Nothing for now */
+#if defined(CONFIG_EXTI_STM32) || defined(CONFIG_USB_DC_STM32)
+	/* Enable System Configuration Controller clock. */
+	LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_SYSCFG);
+#endif
 }
 
 /**

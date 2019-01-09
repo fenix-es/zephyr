@@ -26,7 +26,7 @@ void _nios2_icache_flush_all(void)
 {
 	u32_t i;
 
-	for (i = 0; i < ALT_CPU_ICACHE_SIZE; i += ALT_CPU_ICACHE_LINE_SIZE) {
+	for (i = 0U; i < ALT_CPU_ICACHE_SIZE; i += ALT_CPU_ICACHE_LINE_SIZE) {
 		_nios2_icache_flush(i);
 	}
 
@@ -55,8 +55,38 @@ void _nios2_dcache_flush_all(void)
 {
 	u32_t i;
 
-	for (i = 0; i < ALT_CPU_DCACHE_SIZE; i += ALT_CPU_DCACHE_LINE_SIZE) {
+	for (i = 0U; i < ALT_CPU_DCACHE_SIZE; i += ALT_CPU_DCACHE_LINE_SIZE) {
 		_nios2_dcache_flush(i);
+	}
+}
+#endif
+
+/*
+ * _nios2_dcache_flush_no_writeback() is called to flush the data cache for a
+ * memory region of length "len" bytes, starting at address "start".
+ *
+ * Any dirty lines in the data cache are NOT written back to memory.
+ * Make sure you really want this behavior.  If you aren't 100% sure,
+ * use the _nios2_dcache_flush() routine instead.
+ */
+#if ALT_CPU_DCACHE_SIZE > 0
+void _nios2_dcache_flush_no_writeback(void *start, u32_t len)
+{
+	u8_t *i;
+	u8_t *end = ((char *) start) + len;
+
+	for (i = start; i < end; i += ALT_CPU_DCACHE_LINE_SIZE) {
+		__asm__ volatile ("initda (%0)" :: "r" (i));
+	}
+
+	/*
+	 * For an unaligned flush request, we've got one more line left.
+	 * Note that this is dependent on ALT_CPU_DCACHE_LINE_SIZE to be a
+	 * multiple of 2 (which it always is).
+	 */
+
+	if (((u32_t) start) & (ALT_CPU_DCACHE_LINE_SIZE - 1)) {
+		__asm__ volatile ("initda (%0)" :: "r" (i));
 	}
 }
 #endif

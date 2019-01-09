@@ -5,32 +5,30 @@
 #
 ---
 title: Kinetis System Integration Module (SIM)
-id: nxp,kinetis-sim
 version: 0.1
 
 description: >
     This is a representation of the Kinetis SIM IP node
 
 properties:
-  - compatible:
+    compatible:
       type: string
       category: required
       description: compatible strings
       constraint: "nxp,kinetis-sim"
+      generation: define
 
-  - reg:
+    reg:
       type: int
       description: mmio register space
       generation: define
       category: required
 
-  - label:
+    label:
       type: string
       category: required
       description: Human readable string describing the device (used by Zephyr for API name)
       generation: define
-
-cell_string: SIM_CLK
 
 "#cells":
   - name

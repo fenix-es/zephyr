@@ -1,7 +1,7 @@
 .. _power-mgr-sample:
 
-Power management demo
-#####################
+Intel® Quark™ SE Microcontroller C1000 Power management demo
+############################################################
 
 Overview
 ********
@@ -10,7 +10,7 @@ A sample implementation of a power manager app that uses the Zephyr
 power management infrastructure.
 
 This app will cycle through the various power schemes at every call
-to _sys_soc_suspend() hook function.
+to sys_suspend() hook function.
 It will cycle through the following states:
 
 1. CPU Low Power State
@@ -23,7 +23,7 @@ It will cycle through the following states:
 Requirements
 ************
 
-This application uses Intel Quark SE Microcontroller C1000 board for
+This application uses an Intel® Quark™ SE Microcontroller C1000 board for
 the demo. It demonstrates power operations on the x86 and ARC cores in
 the board.
 
@@ -37,9 +37,11 @@ the board.
 Building and Running
 ********************
 
-.. code-block:: console
-
-    make BOARD=<board>
+.. zephyr-app-commands::
+   :zephyr-app: samples/boards/quark_se_c1000/power_mgr
+   :board: <board>
+   :goals: build
+   :compact:
 
 Sample Output
 =============

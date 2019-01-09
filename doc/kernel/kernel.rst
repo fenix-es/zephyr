@@ -1,7 +1,7 @@
 .. _kernel:
 
-Zephyr Kernel Primer
-####################
+Kernel Services
+###############
 
 This document provides a general introduction of the Zephyr kernel's
 key capabilities and services. Additional details can be found by consulting
@@ -17,4 +17,5 @@ the code in the Zephyr source tree.
    memory/memory.rst
    synchronization/synchronization.rst
    data_passing/data_passing.rst
+   usermode/usermode.rst
    other/other.rst

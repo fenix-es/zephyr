@@ -15,7 +15,7 @@ try:
     import ply.yacc as yacc
 except ImportError:
     print("PLY library for Python 3 not installed.")
-    print("Please install the python3-ply package using your workstation's")
+    print("Please install the ply package using your workstation's")
     print("package manager or the 'pip' tool.")
     sys.exit(1)
 
@@ -164,7 +164,10 @@ def p_error(p):
     else:
         raise SyntaxError("Unexpected end of expression")
 
-parser = yacc.yacc()
+if "PARSETAB_DIR" not in os.environ:
+    parser = yacc.yacc(debug=0)
+else:
+    parser = yacc.yacc(debug=0, outputdir=os.environ["PARSETAB_DIR"])
 
 def ast_sym(ast, env):
     if ast in env:

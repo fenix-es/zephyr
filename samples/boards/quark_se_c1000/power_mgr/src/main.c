@@ -14,6 +14,7 @@
 #define SECONDS_TO_SLEEP	5
 #define ALARM		(RTC_ALARM_SECOND * (SECONDS_TO_SLEEP - 1))
 #define GPIO_IN_PIN	16
+#define MAX_SYS_PM_STATES	2
 
 /* In Tickless Kernel mode, time is passed in milliseconds instead of ticks */
 #ifdef CONFIG_TICKLESS_KERNEL
@@ -34,6 +35,7 @@ static void resume_devices(void);
 
 static struct device *device_list;
 static int device_count;
+static int test_complete;
 
 static int post_ops_done = 1;
 
@@ -54,16 +56,21 @@ int pm_state;
 
 void main(void)
 {
+	int i;
+
 	printk("Power Management Demo on %s\n", CONFIG_ARCH);
 
 	setup_rtc();
 
 	create_device_list();
 
-	while (1) {
+	for (i = 0; i < MAX_SYS_PM_STATES; i++) {
 		printk("\nApplication main thread\n");
 		k_sleep(SECONDS_TO_SLEEP * 1000);
 	}
+	test_complete = 1;
+
+	printk("**Power States test complete**\n");
 }
 
 static int check_pm_policy(s32_t ticks)
@@ -136,7 +143,7 @@ static int low_power_state_entry(s32_t ticks)
 
 	enable_wake_event();
 
-	_sys_soc_set_power_state(SYS_POWER_STATE_CPU_LPS);
+	sys_set_power_state(SYS_POWER_STATE_CPU_LPS);
 
 	return SYS_PM_LOW_POWER_STATE;
 }
@@ -148,14 +155,14 @@ static int deep_sleep_entry(s32_t ticks)
 	start_time = rtc_read(rtc_dev);
 
 	/* Don't need pm idle exit event notification */
-	_sys_soc_pm_idle_exit_notification_disable();
+	sys_pm_idle_exit_notification_disable();
 
 	/* Save device states and turn off peripherals as necessary */
 	suspend_devices();
 
 	enable_wake_event();
 
-	_sys_soc_set_power_state(SYS_POWER_STATE_DEEP_SLEEP);
+	sys_set_power_state(SYS_POWER_STATE_DEEP_SLEEP);
 
 	/*
 	 * At this point system has woken up from
@@ -167,7 +174,7 @@ static int deep_sleep_entry(s32_t ticks)
 	return SYS_PM_DEEP_SLEEP;
 }
 
-int _sys_soc_suspend(s32_t ticks)
+int sys_suspend(s32_t ticks)
 {
 	int ret = SYS_PM_NOT_HANDLED;
 
@@ -176,6 +183,11 @@ int _sys_soc_suspend(s32_t ticks)
 	if ((ticks != K_FOREVER) && (ticks < MIN_TIME_TO_SUSPEND)) {
 		printk("Not enough time for PM operations (" TIME_UNIT_STRING
 		       ": %d).\n", ticks);
+		return SYS_PM_NOT_HANDLED;
+	}
+
+	/* If test is comepleted then do not enter LPS states */
+	if (test_complete) {
 		return SYS_PM_NOT_HANDLED;
 	}
 
@@ -208,7 +220,7 @@ int _sys_soc_suspend(s32_t ticks)
 		 * Some CPU power states would require interrupts to be
 		 * enabled at the time of entering the low power state.
 		 * For such states the post operations need to be done
-		 * at _sys_soc_resume. To avoid doing it twice, check a
+		 * at sys_resume. To avoid doing it twice, check a
 		 * flag.
 		 */
 		if (!post_ops_done) {
@@ -216,14 +228,14 @@ int _sys_soc_suspend(s32_t ticks)
 				low_power_state_exit();
 			}
 			post_ops_done = 1;
-			_sys_soc_power_state_post_ops(pm_state);
+			sys_power_state_post_ops(pm_state);
 		}
 	}
 
 	return ret;
 }
 
-void _sys_soc_resume(void)
+void sys_resume(void)
 {
 	/*
 	 * This notification is called from the ISR of the event
@@ -237,7 +249,7 @@ void _sys_soc_resume(void)
 	 * The kernel scheduler will get control after the ISR finishes
 	 * and it may schedule another thread.
 	 *
-	 * Call _sys_soc_pm_idle_exit_notification_disable() if this
+	 * Call sys_pm_idle_exit_notification_disable() if this
 	 * notification is not required.
 	 */
 	if (!post_ops_done) {
@@ -245,7 +257,7 @@ void _sys_soc_resume(void)
 			low_power_state_exit();
 		}
 		post_ops_done = 1;
-		_sys_soc_power_state_post_ops(pm_state);
+		sys_power_state_post_ops(pm_state);
 	}
 }
 

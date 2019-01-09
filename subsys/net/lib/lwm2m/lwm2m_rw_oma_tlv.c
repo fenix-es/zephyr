@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2017 Linaro Limited
+ * Copyright (c) 2018 Foundries.io
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -56,9 +57,12 @@
  * - Replace magic #'s with defines
  */
 
-#define SYS_LOG_DOMAIN "lib/lwm2m_oma_tlv"
-#define SYS_LOG_LEVEL CONFIG_SYS_LOG_LWM2M_LEVEL
-#include <logging/sys_log.h>
+#define LOG_MODULE_NAME net_lwm2m_oma_tlv
+#define LOG_LEVEL CONFIG_LWM2M_LOG_LEVEL
+
+#include <logging/log.h>
+LOG_MODULE_REGISTER(LOG_MODULE_NAME);
+
 #include <string.h>
 #include <stdint.h>
 #include <misc/byteorder.h>
@@ -77,7 +81,14 @@ struct oma_tlv {
 	u8_t  type;
 	u16_t id; /* can be 8-bit or 16-bit when serialized */
 	u32_t length;
-	const u8_t *value;
+};
+
+struct tlv_out_formatter_data {
+	struct net_buf *mark_frag_oi;
+	u16_t mark_pos_oi;
+	struct net_buf *mark_frag_ri;
+	u16_t mark_pos_ri;
+	u8_t writer_flags;
 };
 
 static u8_t get_len_type(const struct oma_tlv *tlv)
@@ -106,82 +117,150 @@ static u16_t tlv_calc_id(u8_t flags, struct lwm2m_obj_path *path)
 }
 
 static void tlv_setup(struct oma_tlv *tlv, u8_t type, u16_t id,
-		     u32_t buflen, u8_t *buf)
+		      u32_t buflen)
 {
 	if (tlv) {
 		tlv->type = type;
 		tlv->id = id;
 		tlv->length = buflen;
-		tlv->value = buf;
 	}
 }
 
-static size_t oma_tlv_put(const struct oma_tlv *tlv, u8_t *buf, size_t buflen)
+static int oma_tlv_put_u8(struct lwm2m_output_context *out,
+			  u8_t value, bool insert)
 {
-	int pos;
-	u8_t len_type;
+	if (insert) {
+		if (!net_pkt_insert(out->out_cpkt->pkt, out->frag,
+				    out->offset, 1, &value,
+				    BUF_ALLOC_TIMEOUT)) {
+			return -ENOMEM;
+		}
 
-	/* len type is the same as number of bytes required for length */
+		out->offset++;
+	} else {
+		out->frag = net_pkt_write(out->out_cpkt->pkt, out->frag,
+				  out->offset, &out->offset, 1, &value,
+				  BUF_ALLOC_TIMEOUT);
+		if (!out->frag && out->offset == 0xffff) {
+			return -ENOMEM;
+		}
+	}
+
+	return 0;
+}
+
+static size_t oma_tlv_put(const struct oma_tlv *tlv,
+			  struct lwm2m_output_context *out,
+			  u8_t *value, bool insert)
+{
+	size_t pos;
+	int ret, i;
+	u8_t len_type, tmp;
+
+	/* len_type is the same as number of bytes required for length */
 	len_type = get_len_type(tlv);
-	pos = 1 + len_type;
-	/* ensure that we do not write too much */
-	if (buflen < tlv->length + pos) {
-		SYS_LOG_ERR("OMA-TLV: Could not write the TLV - buffer overflow"
-			    " (len:%zd < tlv->length:%d + pos:%d)",
-			    buflen, tlv->length, pos);
+
+	/* first type byte in TLV header */
+	tmp = (tlv->type << 6) |
+	      (tlv->id > 255 ? (1 << 5) : 0) |
+	      (len_type << 3) |
+	      (len_type == 0 ? tlv->length : 0);
+
+	ret = oma_tlv_put_u8(out, tmp, insert);
+	if (ret < 0) {
+		/* TODO: Generate error? */
 		return 0;
 	}
 
-	/* first type byte in TLV header */
-	buf[0] = (tlv->type << 6) |
-		    (tlv->id > 255 ? (1 << 5) : 0) |
-		    (len_type << 3) |
-		    (len_type == 0 ? tlv->length : 0);
 	pos = 1;
 
 	/* The ID */
 	if (tlv->id > 255) {
-		buf[pos++] = (tlv->id >> 8) & 0xff;
+		ret = oma_tlv_put_u8(out, (tlv->id >> 8) & 0xff, insert);
+		if (ret < 0) {
+			/* TODO: Generate error? */
+			return 0;
+		}
+
+		pos++;
 	}
 
-	buf[pos++] = tlv->id & 0xff;
-
-	/* Add length if needed - unrolled loop ? */
-	if (len_type > 2) {
-		buf[pos++] = (tlv->length >> 16) & 0xff;
+	ret = oma_tlv_put_u8(out, tlv->id & 0xff, insert);
+	if (ret < 0) {
+		/* TODO: Generate error? */
+		return 0;
 	}
 
-	if (len_type > 1) {
-		buf[pos++] = (tlv->length >> 8) & 0xff;
-	}
+	pos++;
 
-	if (len_type > 0) {
-		buf[pos++] = tlv->length & 0xff;
+	for (i = 2; i >= 0; i--) {
+		if (len_type > i) {
+			ret = oma_tlv_put_u8(out,
+					     (tlv->length >> (i * 8)) & 0xff,
+					     insert);
+			if (ret < 0) {
+				/* TODO: Generate error? */
+				return 0;
+			}
+
+			pos++;
+		}
 	}
 
 	/* finally add the value */
-	if (tlv->value != NULL && tlv->length > 0) {
-		memcpy(&buf[pos], tlv->value, tlv->length);
+	if (value != NULL && tlv->length > 0 && !insert) {
+		out->frag = net_pkt_write(out->out_cpkt->pkt, out->frag,
+					  out->offset, &out->offset,
+					  tlv->length, value,
+					  BUF_ALLOC_TIMEOUT);
+		if (!out->frag && out->offset == 0xffff) {
+			/* TODO: Generate error? */
+			return 0;
+		}
 	}
 
-	/* TODO: Add debug print of TLV */
 	return pos + tlv->length;
 }
 
-size_t oma_tlv_get(struct oma_tlv *tlv, const u8_t *buf, size_t buflen)
+static size_t oma_tlv_get(struct oma_tlv *tlv,
+			  struct lwm2m_input_context *in,
+			  bool dont_advance)
 {
+	struct net_buf *tmp_frag;
 	u8_t len_type;
-	u8_t len_pos = 1;
+	u8_t len_pos = 1U;
 	size_t tlv_len;
+	u16_t tmp_offset;
+	u8_t buf[2];
+
+	tmp_frag = in->frag;
+	tmp_offset = in->offset;
+	tmp_frag = net_frag_read_u8(tmp_frag, tmp_offset, &tmp_offset, &buf[0]);
+
+	if (!tmp_frag && tmp_offset == 0xffff) {
+		goto error;
+	}
 
 	tlv->type = (buf[0] >> 6) & 3;
 	len_type = (buf[0] >> 3) & 3;
 	len_pos = 1 + (((buf[0] & (1 << 5)) != 0) ? 2 : 1);
+
+	tmp_frag = net_frag_read_u8(tmp_frag, tmp_offset, &tmp_offset, &buf[1]);
+	if (!tmp_frag && tmp_offset == 0xffff) {
+		return 0;
+	}
+
 	tlv->id = buf[1];
 
 	/* if len_pos > 2 it means that there are more ID to read */
 	if (len_pos > 2) {
-		tlv->id = (tlv->id << 8) + buf[2];
+		tmp_frag = net_frag_read_u8(tmp_frag, tmp_offset,
+					    &tmp_offset, &buf[1]);
+		if (!tmp_frag && tmp_offset == 0xffff) {
+			goto error;
+		}
+
+		tlv->id = (tlv->id << 8) + buf[1];
 	}
 
 	if (len_type == 0) {
@@ -190,125 +269,224 @@ size_t oma_tlv_get(struct oma_tlv *tlv, const u8_t *buf, size_t buflen)
 		/* read the length */
 		tlv_len = 0;
 		while (len_type > 0) {
-			tlv_len = tlv_len << 8 | buf[len_pos++];
+			tmp_frag = net_frag_read_u8(tmp_frag, tmp_offset,
+						    &tmp_offset, &buf[1]);
+			if (!tmp_frag && tmp_offset == 0xffff) {
+				goto error;
+			}
+
+			len_pos++;
+			tlv_len = tlv_len << 8 | buf[1];
 			len_type--;
 		}
 	}
 
 	/* and read out the data??? */
 	tlv->length = tlv_len;
-	tlv->value = &buf[len_pos];
+
+	if (!dont_advance) {
+		in->frag = tmp_frag;
+		in->offset = tmp_offset;
+	}
+
 	return len_pos + tlv_len;
+
+error:
+	/* TODO: Generate error? */
+	if (!dont_advance) {
+		in->frag = tmp_frag;
+		in->offset = tmp_offset;
+	}
+
+	return 0;
+}
+
+static size_t put_begin_tlv(struct lwm2m_output_context *out,
+			    struct net_buf **mark_frag, u16_t *mark_pos,
+			    u8_t *writer_flags, int writer_flag)
+{
+	/* set flags */
+	*writer_flags |= writer_flag;
+
+	/*
+	 * store position for inserting TLV when we know the length
+	 */
+	*mark_frag = out->frag;
+	*mark_pos = out->offset;
+
+	return 0;
+}
+
+static size_t put_end_tlv(struct lwm2m_output_context *out,
+			  struct net_buf *mark_frag, u16_t mark_pos,
+			  u8_t *writer_flags, u8_t writer_flag,
+			  int tlv_type, int tlv_id)
+{
+	struct oma_tlv tlv;
+	struct net_buf *tmp_frag;
+	u16_t tmp_pos;
+	u32_t len = 0U;
+
+	*writer_flags &= ~writer_flag;
+
+	len = net_buf_frags_len(mark_frag) - mark_pos;
+
+	/* backup out location */
+	tmp_frag = out->frag;
+	tmp_pos = out->offset;
+
+	/* use stored location */
+	out->frag = mark_frag;
+	out->offset = mark_pos;
+
+	/* set instance length */
+	tlv_setup(&tlv, tlv_type, tlv_id, len);
+	len = oma_tlv_put(&tlv, out, NULL, true) - tlv.length;
+
+	/* restore out location + newly inserted */
+	out->frag = tmp_frag;
+	out->offset = tmp_pos + len;
+
+	return 0;
+}
+
+static size_t put_begin_oi(struct lwm2m_output_context *out,
+			   struct lwm2m_obj_path *path)
+{
+	struct tlv_out_formatter_data *fd;
+
+	fd = engine_get_out_user_data(out);
+	if (!fd) {
+		return 0;
+	}
+
+	return put_begin_tlv(out, &fd->mark_frag_oi, &fd->mark_pos_oi,
+			     &fd->writer_flags, 0);
+}
+
+static size_t put_end_oi(struct lwm2m_output_context *out,
+			 struct lwm2m_obj_path *path)
+{
+	struct tlv_out_formatter_data *fd;
+
+	fd = engine_get_out_user_data(out);
+	if (!fd) {
+		return 0;
+	}
+
+	return put_end_tlv(out, fd->mark_frag_oi, fd->mark_pos_oi,
+			   &fd->writer_flags, 0,
+			   OMA_TLV_TYPE_OBJECT_INSTANCE, path->obj_inst_id);
 }
 
 static size_t put_begin_ri(struct lwm2m_output_context *out,
 			   struct lwm2m_obj_path *path)
 {
-	/* set some flags in state */
-	struct oma_tlv tlv;
-	size_t len;
+	struct tlv_out_formatter_data *fd;
 
-	out->writer_flags |= WRITER_RESOURCE_INSTANCE;
-	tlv_setup(&tlv, OMA_TLV_TYPE_MULTI_RESOURCE, path->res_id, 8, NULL);
+	fd = engine_get_out_user_data(out);
+	if (!fd) {
+		return 0;
+	}
 
-	/* we remove the nonsense payload here (len = 8) */
-	len = oma_tlv_put(&tlv, &out->outbuf[out->outlen],
-			    out->outsize - out->outlen) - 8;
-	/*
-	 * store position for deciding where to re-write the TLV when we
-	 * know the length - NOTE: either this or memmov of buffer later...
-	 */
-	out->mark_pos_ri = out->outlen;
-	out->outlen += len;
-	return len;
+	return put_begin_tlv(out, &fd->mark_frag_ri, &fd->mark_pos_ri,
+			     &fd->writer_flags, WRITER_RESOURCE_INSTANCE);
 }
 
 static size_t put_end_ri(struct lwm2m_output_context *out,
 			 struct lwm2m_obj_path *path)
 {
-	/* clear out state info */
-	int pos = 2; /* this is the length pos */
-	size_t len;
+	struct tlv_out_formatter_data *fd;
 
-	out->writer_flags &= ~WRITER_RESOURCE_INSTANCE;
-	if (path->res_id > 0xff) {
-		pos++;
+	fd = engine_get_out_user_data(out);
+	if (!fd) {
+		return 0;
 	}
 
-	len = out->outlen - out->mark_pos_ri;
-
-	/* update the length byte... Assume TLV header is pos + 1 bytes. */
-	out->outbuf[pos + out->mark_pos_ri] = len - (pos + 1);
-	return 0;
+	return put_end_tlv(out, fd->mark_frag_ri, fd->mark_pos_ri,
+			   &fd->writer_flags, WRITER_RESOURCE_INSTANCE,
+			   OMA_TLV_TYPE_MULTI_RESOURCE, path->res_id);
 }
 
 static size_t put_s8(struct lwm2m_output_context *out,
 		     struct lwm2m_obj_path *path, s8_t value)
 {
+	struct tlv_out_formatter_data *fd;
 	size_t len;
 	struct oma_tlv tlv;
 
-	tlv_setup(&tlv, tlv_calc_type(out->writer_flags),
-		  tlv_calc_id(out->writer_flags, path), sizeof(value),
-		  (u8_t *)&value);
+	fd = engine_get_out_user_data(out);
+	if (!fd) {
+		return 0;
+	}
 
-	len = oma_tlv_put(&tlv, &out->outbuf[out->outlen],
-			  out->outsize - out->outlen);
-	out->outlen += len;
+	tlv_setup(&tlv, tlv_calc_type(fd->writer_flags),
+		  tlv_calc_id(fd->writer_flags, path), sizeof(value));
+
+	len = oma_tlv_put(&tlv, out, (u8_t *)&value, false);
 	return len;
 }
 
 static size_t put_s16(struct lwm2m_output_context *out,
 		      struct lwm2m_obj_path *path, s16_t value)
 {
+	struct tlv_out_formatter_data *fd;
 	size_t len;
 	struct oma_tlv tlv;
 	s16_t net_value;
 
-	net_value = sys_cpu_to_be16(value);
-	tlv_setup(&tlv, tlv_calc_type(out->writer_flags),
-		  tlv_calc_id(out->writer_flags, path), sizeof(net_value),
-		  (u8_t *)&net_value);
+	fd = engine_get_out_user_data(out);
+	if (!fd) {
+		return 0;
+	}
 
-	len = oma_tlv_put(&tlv, &out->outbuf[out->outlen],
-			  out->outsize - out->outlen);
-	out->outlen += len;
+	net_value = sys_cpu_to_be16(value);
+	tlv_setup(&tlv, tlv_calc_type(fd->writer_flags),
+		  tlv_calc_id(fd->writer_flags, path), sizeof(net_value));
+
+	len = oma_tlv_put(&tlv, out, (u8_t *)&net_value, false);
 	return len;
 }
 
 static size_t put_s32(struct lwm2m_output_context *out,
 			struct lwm2m_obj_path *path, s32_t value)
 {
+	struct tlv_out_formatter_data *fd;
 	size_t len;
 	struct oma_tlv tlv;
 	s32_t net_value;
 
-	net_value = sys_cpu_to_be32(value);
-	tlv_setup(&tlv, tlv_calc_type(out->writer_flags),
-		  tlv_calc_id(out->writer_flags, path), sizeof(net_value),
-		  (u8_t *)&net_value);
+	fd = engine_get_out_user_data(out);
+	if (!fd) {
+		return 0;
+	}
 
-	len = oma_tlv_put(&tlv, &out->outbuf[out->outlen],
-			  out->outsize - out->outlen);
-	out->outlen += len;
+	net_value = sys_cpu_to_be32(value);
+	tlv_setup(&tlv, tlv_calc_type(fd->writer_flags),
+		  tlv_calc_id(fd->writer_flags, path), sizeof(net_value));
+
+	len = oma_tlv_put(&tlv, out, (u8_t *)&net_value, false);
 	return len;
 }
 
 static size_t put_s64(struct lwm2m_output_context *out,
 			struct lwm2m_obj_path *path, s64_t value)
 {
+	struct tlv_out_formatter_data *fd;
 	size_t len;
 	struct oma_tlv tlv;
 	s64_t net_value;
 
-	net_value = sys_cpu_to_be64(value);
-	tlv_setup(&tlv, tlv_calc_type(out->writer_flags),
-		  tlv_calc_id(out->writer_flags, path), sizeof(net_value),
-		  (u8_t *)&net_value);
+	fd = engine_get_out_user_data(out);
+	if (!fd) {
+		return 0;
+	}
 
-	len = oma_tlv_put(&tlv, &out->outbuf[out->outlen],
-			  out->outsize - out->outlen);
-	out->outlen += len;
+	net_value = sys_cpu_to_be64(value);
+	tlv_setup(&tlv, tlv_calc_type(fd->writer_flags),
+		  tlv_calc_id(fd->writer_flags, path), sizeof(net_value));
+
+	len = oma_tlv_put(&tlv, out, (u8_t *)&net_value, false);
 	return len;
 }
 
@@ -316,15 +494,18 @@ static size_t put_string(struct lwm2m_output_context *out,
 			 struct lwm2m_obj_path *path,
 			 char *buf, size_t buflen)
 {
+	struct tlv_out_formatter_data *fd;
 	size_t len;
 	struct oma_tlv tlv;
 
-	tlv_setup(&tlv, tlv_calc_type(out->writer_flags),
-		  path->res_id, (u32_t)buflen,
-		  (u8_t *)buf);
-	len = oma_tlv_put(&tlv, &out->outbuf[out->outlen],
-			    out->outsize - out->outlen);
-	out->outlen += len;
+	fd = engine_get_out_user_data(out);
+	if (!fd) {
+		return 0;
+	}
+
+	tlv_setup(&tlv, tlv_calc_type(fd->writer_flags),
+		  path->res_id, (u32_t)buflen);
+	len = oma_tlv_put(&tlv, out, (u8_t *)buf, false);
 	return len;
 }
 
@@ -333,9 +514,9 @@ static size_t put_float32fix(struct lwm2m_output_context *out,
 			     struct lwm2m_obj_path *path,
 			     float32_value_t *value)
 {
+	struct tlv_out_formatter_data *fd;
 	size_t len;
 	struct oma_tlv tlv;
-	u8_t *buffer = &out->outbuf[out->outlen];
 	int e = 0;
 	s32_t val = 0;
 	s32_t v;
@@ -350,6 +531,11 @@ static size_t put_float32fix(struct lwm2m_output_context *out,
 	 * HACK BELOW: hard code the decimal mask to 0 (whole number)
 	 */
 	int bits = 0;
+
+	fd = engine_get_out_user_data(out);
+	if (!fd) {
+		return 0;
+	}
 
 	v = value->val1;
 	if (v < 0) {
@@ -379,12 +565,9 @@ static size_t put_float32fix(struct lwm2m_output_context *out,
 	b[2] = (val >> 8) & 0xff;
 	b[3] = val & 0xff;
 
-	tlv_setup(&tlv, tlv_calc_type(out->writer_flags),
-		  tlv_calc_id(out->writer_flags, path),
-		  4, b);
-	len = oma_tlv_put(&tlv, buffer, out->outsize - out->outlen);
-	out->outlen += len;
-
+	tlv_setup(&tlv, tlv_calc_type(fd->writer_flags),
+		  tlv_calc_id(fd->writer_flags, path), 4);
+	len = oma_tlv_put(&tlv, out, b, false);
 	return len;
 }
 
@@ -392,19 +575,23 @@ static size_t put_float64fix(struct lwm2m_output_context *out,
 			     struct lwm2m_obj_path *path,
 			     float64_value_t *value)
 {
+	struct tlv_out_formatter_data *fd;
 	size_t len;
 	s64_t binary64 = 0, net_binary64 = 0;
 	struct oma_tlv tlv;
-	u8_t *buffer = &out->outbuf[out->outlen];
 
 	/* TODO */
 
+	fd = engine_get_out_user_data(out);
+	if (!fd) {
+		return 0;
+	}
+
 	net_binary64 = sys_cpu_to_be64(binary64);
-	tlv_setup(&tlv, tlv_calc_type(out->writer_flags),
-		  tlv_calc_id(out->writer_flags, path),
-		  sizeof(net_binary64), (u8_t *)&net_binary64);
-	len = oma_tlv_put(&tlv, buffer, out->outsize - out->outlen);
-	out->outlen += len;
+	tlv_setup(&tlv, tlv_calc_type(fd->writer_flags),
+		  tlv_calc_id(fd->writer_flags, path),
+		  sizeof(net_binary64));
+	len = oma_tlv_put(&tlv, out, (u8_t *)&net_binary64, false);
 	return len;
 }
 
@@ -414,59 +601,63 @@ static size_t put_bool(struct lwm2m_output_context *out,
 	return put_s8(out, path, value != 0 ? 1 : 0);
 }
 
-static size_t get_s32(struct lwm2m_input_context *in, s32_t *value)
+static size_t get_number(struct lwm2m_input_context *in, s64_t *value,
+			 u8_t max_len)
 {
 	struct oma_tlv tlv;
-	size_t size = oma_tlv_get(&tlv, in->inbuf, in->insize);
+	size_t size = oma_tlv_get(&tlv, in, false);
+	s64_t temp;
 
 	*value = 0;
 	if (size > 0) {
+		if (tlv.length > max_len) {
+			LOG_ERR("invalid length: %u", tlv.length);
+			return 0;
+		}
+
+		in->frag = net_frag_read(in->frag, in->offset, &in->offset,
+					 tlv.length, (u8_t *)&temp);
+		if (!in->frag && in->offset == 0xffff) {
+			/* TODO: Generate error? */
+			return 0;
+		}
+
 		switch (tlv.length) {
 		case 1:
-			*value = *(s8_t *)tlv.value;
+			*value = (s8_t)temp;
 			break;
 		case 2:
-			*value = sys_cpu_to_be16(*(s16_t *)tlv.value);
+			*value = sys_cpu_to_be16((s16_t)temp);
 			break;
 		case 4:
-			*value = sys_cpu_to_be32(*(s32_t *)tlv.value);
+			*value = sys_cpu_to_be32((s32_t)temp);
+			break;
+		case 8:
+			*value = sys_cpu_to_be64(temp);
 			break;
 		default:
-			SYS_LOG_ERR("invalid length: %u", tlv.length);
-			size = 0;
-			tlv.length = 0;
+			LOG_ERR("invalid length: %u", tlv.length);
+			return 0;
 		}
 	}
 
 	return size;
 }
 
-/* TODO: research to make sure this is correct */
 static size_t get_s64(struct lwm2m_input_context *in, s64_t *value)
 {
-	struct oma_tlv tlv;
-	size_t size = oma_tlv_get(&tlv, in->inbuf, in->insize);
+	return get_number(in, value, 8);
+}
+
+static size_t get_s32(struct lwm2m_input_context *in, s32_t *value)
+{
+	s64_t temp;
+	size_t size;
 
 	*value = 0;
+	size = get_number(in, &temp, 4);
 	if (size > 0) {
-		switch (tlv.length) {
-		case 1:
-			*value = *tlv.value;
-			break;
-		case 2:
-			*value = sys_cpu_to_be16(*(s16_t *)tlv.value);
-			break;
-		case 4:
-			*value = sys_cpu_to_be32(*(s32_t *)tlv.value);
-			break;
-		case 8:
-			*value = sys_cpu_to_be64(*(s64_t *)tlv.value);
-			break;
-		default:
-			SYS_LOG_ERR("invalid length: %u", tlv.length);
-			size = 0;
-			tlv.length = 0;
-		}
+		*value = (s32_t)temp;
 	}
 
 	return size;
@@ -476,18 +667,21 @@ static size_t get_string(struct lwm2m_input_context *in,
 			 u8_t *buf, size_t buflen)
 {
 	struct oma_tlv tlv;
-	size_t size = oma_tlv_get(&tlv, in->inbuf, in->insize);
+	size_t size = oma_tlv_get(&tlv, in, false);
 
 	if (size > 0) {
 		if (buflen <= tlv.length) {
-			/*
-			 * The outbuffer can not contain the
-			 * full string including ending zero
-			 */
+			/* TODO: Generate error? */
 			return 0;
 		}
 
-		memcpy(buf, tlv.value, tlv.length);
+		in->frag = net_frag_read(in->frag, in->offset, &in->offset,
+					 tlv.length, buf);
+		if (!in->frag && in->offset == 0xffff) {
+			/* TODO: Generate error? */
+			return 0;
+		}
+
 		buf[tlv.length] = '\0';
 	}
 
@@ -499,25 +693,35 @@ static size_t get_float32fix(struct lwm2m_input_context *in,
 			     float32_value_t *value)
 {
 	struct oma_tlv tlv;
-	size_t size = oma_tlv_get(&tlv, in->inbuf, in->insize);
+	size_t size = oma_tlv_get(&tlv, in, false);
 	int e;
 	s32_t val;
-	int sign = (tlv.value[0] & 0x80) != 0;
-	/* */
+	int sign = false;
 	int bits = 0;
+	u8_t values[4];
 
 	if (size > 0) {
 		/* TLV needs to be 4 bytes */
-		e = ((tlv.value[0] << 1) & 0xff) | (tlv.value[1] >> 7);
-		val = (((long)tlv.value[1] & 0x7f) << 16) |
-		      (tlv.value[2] << 8) |
-		      tlv.value[3];
+		in->frag = net_frag_read(in->frag, in->offset, &in->offset,
+					 4, values);
+		if (!in->frag && in->offset == 0xffff) {
+			/* TODO: Generate error? */
+			return 0;
+		}
+
+		/* sign */
+		sign = (values[0] & 0x80) != 0;
+
+		e = ((values[0] << 1) & 0xff) | (values[1] >> 7);
+		val = (((long)values[1] & 0x7f) << 16) |
+		      (values[2] << 8) |
+		      values[3];
 		e = e - 127 + bits;
 
 		/* e is the number of times we need to roll the number */
-		SYS_LOG_DBG("Actual e=%d", e);
+		LOG_DBG("Actual e=%d", e);
 		e = e - 23;
-		SYS_LOG_DBG("E after sub %d", e);
+		LOG_DBG("E after sub %d", e);
 		val = val | 1L << 23;
 		if (e > 0) {
 			val = val << e;
@@ -545,11 +749,11 @@ static size_t get_float64fix(struct lwm2m_input_context *in,
 			     float64_value_t *value)
 {
 	struct oma_tlv tlv;
-	size_t size = oma_tlv_get(&tlv, in->inbuf, in->insize);
+	size_t size = oma_tlv_get(&tlv, in, false);
 
 	if (size > 0) {
 		if (tlv.length != 8) {
-			SYS_LOG_ERR("invalid length: %u (not 8)", tlv.length);
+			LOG_ERR("invalid length: %u (not 8)", tlv.length);
 			return 0;
 		}
 
@@ -561,82 +765,110 @@ static size_t get_float64fix(struct lwm2m_input_context *in,
 
 static size_t get_bool(struct lwm2m_input_context *in, bool *value)
 {
-	struct oma_tlv tlv;
-	size_t size = oma_tlv_get(&tlv, in->inbuf, in->insize);
-	int i;
-	s32_t temp = 0;
+	s64_t temp;
+	size_t size;
 
+	*value = 0;
+	size = get_number(in, &temp, 2);
 	if (size > 0) {
-		/* will probably need to handle MSB as a sign bit? */
-		for (i = 0; i < tlv.length; i++) {
-			temp = (temp << 8) | tlv.value[i];
-		}
 		*value = (temp != 0);
 	}
 
 	return size;
 }
 
+static size_t get_opaque(struct lwm2m_input_context *in,
+			 u8_t *value, size_t buflen, bool *last_block)
+{
+	struct oma_tlv tlv;
+
+	oma_tlv_get(&tlv, in, false);
+	in->opaque_len = tlv.length;
+	return lwm2m_engine_get_opaque_more(in, value, buflen, last_block);
+}
+
 const struct lwm2m_writer oma_tlv_writer = {
-	NULL,
-	NULL,
-	put_begin_ri,
-	put_end_ri,
-	put_s8,
-	put_s16,
-	put_s32,
-	put_s64,
-	put_string,
-	put_float32fix,
-	put_float64fix,
-	put_bool
+	.put_begin_oi = put_begin_oi,
+	.put_end_oi = put_end_oi,
+	.put_begin_ri = put_begin_ri,
+	.put_end_ri = put_end_ri,
+	.put_s8 = put_s8,
+	.put_s16 = put_s16,
+	.put_s32 = put_s32,
+	.put_s64 = put_s64,
+	.put_string = put_string,
+	.put_float32fix = put_float32fix,
+	.put_float64fix = put_float64fix,
+	.put_bool = put_bool,
 };
 
 const struct lwm2m_reader oma_tlv_reader = {
-	get_s32,
-	get_s64,
-	get_string,
-	get_float32fix,
-	get_float64fix,
-	get_bool
+	.get_s32 = get_s32,
+	.get_s64 = get_s64,
+	.get_string = get_string,
+	.get_float32fix = get_float32fix,
+	.get_float64fix = get_float64fix,
+	.get_bool = get_bool,
+	.get_opaque = get_opaque,
 };
 
-static int do_write_op_tlv_item(struct lwm2m_engine_context *context,
-				u8_t *data, int len)
+int do_read_op_tlv(struct lwm2m_engine_obj *obj,
+		   struct lwm2m_engine_context *context,
+		   int content_format)
+{
+	struct tlv_out_formatter_data fd;
+	int ret;
+
+	(void)memset(&fd, 0, sizeof(fd));
+	engine_set_out_user_data(context->out, &fd);
+	ret = lwm2m_perform_read_op(obj, context, content_format);
+	engine_clear_out_user_data(context->out);
+	return ret;
+}
+
+static int do_write_op_tlv_dummy_read(struct lwm2m_engine_context *context)
 {
 	struct lwm2m_input_context *in = context->in;
+	struct oma_tlv tlv;
+	u8_t read_char;
+
+	oma_tlv_get(&tlv, in, false);
+	while (in->frag && tlv.length--) {
+		in->frag = net_frag_read_u8(in->frag, in->offset, &in->offset,
+					    &read_char);
+	}
+
+	return 0;
+}
+
+static int do_write_op_tlv_item(struct lwm2m_engine_context *context)
+{
 	struct lwm2m_engine_obj_inst *obj_inst = NULL;
 	struct lwm2m_engine_res_inst *res = NULL;
 	struct lwm2m_engine_obj_field *obj_field = NULL;
-	u8_t created = 0;
+	u8_t created = 0U;
 	int ret, i;
-
-	in->inbuf = data;
-	in->inpos = 0;
-	in->insize = len;
 
 	ret = lwm2m_get_or_create_engine_obj(context, &obj_inst, &created);
 	if (ret < 0) {
-		return ret;
+		goto error;
 	}
 
 	obj_field = lwm2m_get_engine_obj_field(obj_inst->obj,
 					       context->path->res_id);
-	/* if obj_field is not found, treat as an optional resource */
 	if (!obj_field) {
-		if (context->operation == LWM2M_OP_CREATE) {
-			return -ENOTSUP;
-		}
-
-		return -ENOENT;
+		ret = -ENOENT;
+		goto error;
 	}
 
-	if ((obj_field->permissions & LWM2M_PERM_W) != LWM2M_PERM_W) {
-		return -EPERM;
+	if (!LWM2M_HAS_PERM(obj_field, LWM2M_PERM_W)) {
+		ret = -EPERM;
+		goto error;
 	}
 
 	if (!obj_inst->resources || obj_inst->resource_count == 0) {
-		return -EINVAL;
+		ret = -EINVAL;
+		goto error;
 	}
 
 	for (i = 0; i < obj_inst->resource_count; i++) {
@@ -647,10 +879,29 @@ static int do_write_op_tlv_item(struct lwm2m_engine_context *context,
 	}
 
 	if (!res) {
-		return -ENOENT;
+		/* if OPTIONAL and OP_CREATE use ENOTSUP */
+		if (context->operation == LWM2M_OP_CREATE &&
+		    LWM2M_HAS_PERM(obj_field, BIT(LWM2M_FLAG_OPTIONAL))) {
+			ret = -ENOTSUP;
+			goto error;
+		}
+
+		ret = -ENOENT;
+		goto error;
 	}
 
-	return lwm2m_write_handler(obj_inst, res, obj_field, context);
+	ret = lwm2m_write_handler(obj_inst, res, obj_field, context);
+	if (ret == -EACCES || ret == -ENOENT) {
+		/* if read-only or non-existent data buffer move on */
+		do_write_op_tlv_dummy_read(context);
+		ret = 0;
+	}
+
+	return ret;
+
+error:
+	do_write_op_tlv_dummy_read(context);
+	return ret;
 }
 
 int do_write_op_tlv(struct lwm2m_engine_obj *obj,
@@ -661,24 +912,24 @@ int do_write_op_tlv(struct lwm2m_engine_obj *obj,
 	struct lwm2m_engine_obj_inst *obj_inst = NULL;
 	size_t len;
 	struct oma_tlv tlv;
-	int tlvpos = 0, ret;
-	u16_t insize = in->insize;
-	u8_t *inbuf = in->inbuf;
+	int ret;
 
-	while (tlvpos < insize) {
-		len = oma_tlv_get(&tlv, &inbuf[tlvpos],
-				  insize - tlvpos);
-
-		SYS_LOG_DBG("Got TLV format First is: type:%d id:%d "
-			    "len:%d (p:%d len:%d/%d)",
-			    tlv.type, tlv.id, (int) tlv.length,
-			    (int) tlvpos, (int) len, (int) insize);
+	while (true) {
+		/*
+		 * This initial read of TLV data won't advance frag/offset.
+		 * We need tlv.type to determine how to proceed.
+		 */
+		len = oma_tlv_get(&tlv, in, true);
+		if (len == 0) {
+			break;
+		}
 
 		if (tlv.type == OMA_TLV_TYPE_OBJECT_INSTANCE) {
 			struct oma_tlv tlv2;
 			int len2;
 			int pos = 0;
 
+			oma_tlv_get(&tlv, in, false);
 			path->obj_inst_id = tlv.id;
 			if (tlv.length == 0) {
 				/* Create only - no data */
@@ -691,15 +942,11 @@ int do_write_op_tlv(struct lwm2m_engine_obj *obj,
 			}
 
 			while (pos < tlv.length &&
-			       (len2 = oma_tlv_get(&tlv2, &tlv.value[pos],
-						    tlv.length - pos))) {
+			       (len2 = oma_tlv_get(&tlv2, in, true))) {
 				if (tlv2.type == OMA_TLV_TYPE_RESOURCE) {
 					path->res_id = tlv2.id;
 					path->level = 3;
-					ret = do_write_op_tlv_item(
-							context,
-							(u8_t *)&tlv.value[pos],
-							len2);
+					ret = do_write_op_tlv_item(context);
 					/*
 					 * ignore errors for CREATE op
 					 * TODO: support BOOTSTRAP WRITE where
@@ -718,8 +965,7 @@ int do_write_op_tlv(struct lwm2m_engine_obj *obj,
 		} else if (tlv.type == OMA_TLV_TYPE_RESOURCE) {
 			path->res_id = tlv.id;
 			path->level = 3;
-			ret = do_write_op_tlv_item(context,
-						   &inbuf[tlvpos], len);
+			ret = do_write_op_tlv_item(context);
 			/*
 			 * ignore errors for CREATE op
 			 * TODO: support BOOTSTRAP WRITE where optional
@@ -730,8 +976,6 @@ int do_write_op_tlv(struct lwm2m_engine_obj *obj,
 				return ret;
 			}
 		}
-
-		tlvpos += len;
 	}
 
 	return 0;

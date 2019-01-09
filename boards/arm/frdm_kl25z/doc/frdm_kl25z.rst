@@ -57,11 +57,11 @@ The frdm_kl25z board configuration supports the following hardware features:
 +-----------+------------+-------------------------------------+
 | I2C       | on-chip    | i2c                                 |
 +-----------+------------+-------------------------------------+
-| SPI       | on-chip    | spi                                 |
-+-----------+------------+-------------------------------------+
 | ADC       | on-chip    | adc                                 |
 +-----------+------------+-------------------------------------+
 | FLASH     | on-chip    | soc flash                           |
++-----------+------------+-------------------------------------+
+| USB       | on-chip    | USB device                          |
 +-----------+------------+-------------------------------------+
 
 The default configuration can be found in the defconfig file:
@@ -95,14 +95,6 @@ The KL25Z SoC has five pairs of pinmux/gpio controllers, and all are currently e
 +-------+-------------+---------------------------+
 | PTE25 | I2C0_SDA    | I2C                       |
 +-------+-------------+---------------------------+
-| PTC4  | SPI0_PSC0   | SPI                       |
-+-------+-------------+---------------------------+
-| PTC5  | SPI0_SCK    | SPI                       |
-+-------+-------------+---------------------------+
-| PTC6  | SPI0_MOSI   | SPI                       |
-+-------+-------------+---------------------------+
-| PTC7  | SPI0_MISO   | SPI                       |
-+-------+-------------+---------------------------+
 
 
 System Clock
@@ -116,6 +108,13 @@ Serial Port
 
 The KL25Z UART0 is used for the console.
 
+USB
+===
+
+The KL25Z SoC has a USB OTG (USBOTG) controller that supports both
+device and host functions through its mini USB connector (USB KL25Z).
+Only USB device function is supported in Zephyr at the moment.
+
 Programming and Debugging
 *************************
 
@@ -126,29 +125,29 @@ communication over USB.
 To use the pyOCD tools with OpenSDA, follow the instructions in the
 :ref:`nxp_opensda_pyocd` page using the `DAPLink FRDM-KL25Z Firmware`_. The
 pyOCD tools are the default for this board, therefore it is not necessary to
-set ``OPENSDA_FW=daplink`` explicitly when you invoke ``make flash`` or ``make
-debug``.
+set ``OPENSDA_FW=daplink`` explicitly when programming and debugging.
 
-To use the Segger J-Link tools with OpenSDA, follow the instructions in the
-:ref:`nxp_opensda_jlink` page using the `Segger J-Link OpenSDA V2.1 Firmware`_.
-The Segger J-Link tools are not the default for this board, therefore it is
-necessary to set ``OPENSDA_FW=jlink`` explicitly when you invoke ``make
-debug``.
+With these mechanisms, applications for the ``frdm_kl25z`` board
+configuration can be built and flashed in the usual way (see
+:ref:`build_an_application` and :ref:`application_run` for more
+details).
+
+To use the Segger J-Link tools with OpenSDA, follow the instructions
+in the :ref:`nxp_opensda_jlink` page using the `Segger J-Link OpenSDA
+V2.1 Firmware`_.  The Segger J-Link tools are not the default for this
+board, therefore it is necessary to set ``OPENSDA_FW=jlink``
+explicitly in the environment before programming and debugging.
 
 Flashing
 ========
 
 This example uses the :ref:`hello_world` sample with the
-:ref:`nxp_opensda_pyocd` tools. Use the ``make flash`` build target to build
-your Zephyr application, invoke the pyOCD flash tool and program your Zephyr
-application to flash.
+:ref:`nxp_opensda_pyocd` tools.
 
-.. code-block:: console
-
-   $ cd <zephyr_root_path>
-   $ . zephyr-env.sh
-   $ cd samples/hello_world/
-   $ make BOARD=frdm_kl25z flash
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: frdm_kl25z
+   :goals: flash
 
 Open a serial terminal (minicom, putty, etc.) with the following settings:
 
@@ -167,36 +166,32 @@ the following message:
 Debugging
 =========
 
-This example uses the :ref:`hello_world` sample with the
-:ref:`nxp_opensda_pyocd` tools. Use the ``make debug`` build target to build
-your Zephyr application, invoke the pyOCD GDB server, attach a GDB client, and
-program your Zephyr application to flash. It will leave you at a gdb prompt.
+You can debug an application in the usual way.  Here is an example for the
+:ref:`hello_world` application.
 
-.. code-block:: console
-
-   $ cd <zephyr_root_path>
-   $ . zephyr-env.sh
-   $ cd samples/hello_world/
-   $ make BOARD=frdm_kl25z debug
-
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: frdm_kl25z
+   :maybe-skip-config:
+   :goals: debug
 
 .. _FRDM-KL25Z Website:
-   http://www.nxp.com/products/software-and-tools/hardware-development-tools/freedom-development-boards/freedom-development-platform-for-kinetis-kl14-kl15-kl24-kl25-mcus:FRDM-KL25Z?tid=vanFRDM-KL25Z
+   https://www.nxp.com/products/processors-and-microcontrollers/arm-based-processors-and-mcus/kinetis-cortex-m-mcus/l-seriesultra-low-powerm0-plus/freedom-development-platform-for-kinetis-kl14-kl15-kl24-kl25-mcus:FRDM-KL25Z
 
 .. _FRDM-KL25Z User Guide:
-   http://www.nxp.com/assets/documents/data/en/user-guides/FRDMKL25ZUM.zip
+   https://www.nxp.com/docs/en/user-guide/FRDMKL25ZUM.zip
 
 .. _FRDM-KL25Z Schematics:
-   http://www.nxp.com/assets/downloads/data/en/schematics/FRDM-KL25Z_SCH_REV_E.pdf
+   https://www.nxp.com/downloads/en/schematics/FRDM-KL25Z_SCH_REV_E.pdf
 
 .. _KL25Z Website:
-   http://www.nxp.com/products/microcontrollers-and-processors/arm-processors/kinetis-cortex-m-mcus/l-series-ultra-low-power-m0-plus/kinetis-kl2x-48-mhz-usb-ultra-low-power-microcontrollers-mcus-based-on-arm-cortex-m0-plus-core:KL2x?lang_cd=en
+   https://www.nxp.com/products/processors-and-microcontrollers/arm-based-processors-and-mcus/kinetis-cortex-m-mcus/l-seriesultra-low-powerm0-plus/kinetis-kl2x-72-96mhz-usb-ultra-low-power-microcontrollers-mcus-based-on-arm-cortex-m0-plus-core:KL2x?&l
 
 .. _KL25Z Datasheet:
-   http://www.nxp.com/assets/documents/data/en/data-sheets/KL25P80M48SF0.pdf
+   https://www.nxp.com/docs/en/data-sheet/KL25P80M48SF0.pdf
 
 .. _KL25Z Reference Manual:
-   http://www.nxp.com/assets/documents/data/en/reference-manuals/KL25P80M48SF0RM.pdf
+   https://www.nxp.com/docs/en/reference-manual/KL25P80M48SF0RM.pdf
 
 .. _DAPLink FRDM-KL25Z Firmware:
    http://www.nxp.com/assets/downloads/data/en/ide-debug-compile-build-tools/OpenSDAv2.2_DAPLink_frdmkl25z_rev0242.zip

@@ -1,7 +1,7 @@
 .. _disco_l475_iot1_board:
 
-ST Disco L475 IOT01
-###################
+ST Disco L475 IOT01 (B-L475E-IOT01A)
+####################################
 
 Overview
 ********
@@ -117,6 +117,8 @@ The Zephyr Disco L475 IoT board configuration supports the following hardware fe
 +-----------+------------+-------------------------------------+
 | I2C       | on-chip    | i2c                                 |
 +-----------+------------+-------------------------------------+
+| SPI       | on-chip    | spi                                 |
++-----------+------------+-------------------------------------+
 | PWM       | on-chip    | pwm                                 |
 +-----------+------------+-------------------------------------+
 
@@ -141,17 +143,12 @@ For detailed information about available pins please refer to `STM32 Disco L475 
 Default Zephyr Peripheral Mapping:
 ----------------------------------
 
-- UART_1_TX : PB6
-- UART_1_RX : PB7
-- UART_2_TX : PA2
-- UART_2_RX : PA3
-- I2C_1_SCL : PB8
-- I2C_1_SDA : PB9
-- I2C_2_SCL : PB10
-- I2C_2_SDA : PB11
-- SPI_1_SCK : PA5
-- SPI_1_MISO : PA6
-- SPI_1_MOSI : PA7
+- UART_1 TX/RX : PB6/PB7 (ST-Link Virtual Port Com)
+- UART_4 TX/RX : PA0/PA1 (Arduino Serial)
+- I2C1 SCL/SDA : PB8/PB9 (Arduino I2C)
+- I2C2 SCL/SDA : PB10/PB11 (Sensor I2C bus)
+- SPI1 SCK/MISO/MOSI : PA5/PA6/PA7 (Arduino SPI)
+- SPI3 SCK/MISO/MOSI : PC10/PC11/PC12 (BT SPI bus)
 - PWM_2_CH1 : PA15
 - USER_PB : PC13
 - LD2 : PA5
@@ -173,65 +170,53 @@ Default settings are 115200 8N1.
 Programming and Debugging
 *************************
 
+Applications for the ``disco_l475_iot1`` board configuration can be built and
+flashed in the usual way (see :ref:`build_an_application` and
+:ref:`application_run` for more details).
+
 Flashing
 ========
 
-Disco L475 IoT board includes an ST-LINK/V2-1 embedded debug tool interface.
-This interface is not supported by the openocd version 0.9 included by the Zephyr SDK v0.9.
-Until we update the Zephyr SDK, use openocd v0.10.0 from the openocd-stm32 project on GitHub
-to get the minimum set of scripts needed to flash and debug STM32 development boards.
-
-.. code-block:: console
-
-   $ git clone  https://github.com/erwango/openocd-stm32.git
-
-Then follow instructions in README.md
-
+Disco L475 IoT board includes an ST-LINK/V2-1 embedded debug tool
+interface.  This interface is supported by the openocd version
+included in the Zephyr SDK since v0.9.2.
 
 Flashing an application to Disco L475 IoT
 -----------------------------------------
 
-The sample application :ref:`hello_world` is being used in this tutorial:
+Here is an example for the :ref:`hello_world` application.
 
-To build the Zephyr kernel and application, enter:
-
-.. code-block:: console
-
-   $ cd <zephyr_root_path>
-   $ source zephyr-env.sh
-   $ cd $ZEPHYR_BASE/samples/hello_world/
-   $ make BOARD=disco_l475_iot1
-
-Connect the Disco L475 IoT to your host computer using the USB port.
-Then, enter the following command:
-
-.. code-block:: console
-
-   $ cd <openocd-stm32_path>
-   $ stm32_flsh l4 $ZEPHYR_BASE/samples/hello_world/outdir/disco_l475_iot1/zephyr.bin
-
-Run a serial host program to connect with your Nucleo board.
+Connect the Disco L475 IoT to your host computer using the USB port, then
+run a serial host program to connect with your Nucleo board. For example:
 
 .. code-block:: console
 
    $ minicom -D /dev/ttyACM0
 
-You should see the following message:
+Then build and flash the application:
+
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: disco_l475_iot1
+   :goals: build flash
+
+You should see the following message on the console:
 
 .. code-block:: console
 
    $ Hello World! arm
 
-
 Debugging
 =========
 
-Access gdb with the following make command:
+You can debug an application in the usual way.  Here is an example for the
+:ref:`hello_world` application.
 
-.. code-block:: console
-
-   $ cd <openocd-stm32_path>
-   $ stm32_dbg l4 $ZEPHYR_BASE/samples/hello_world/outdir/disco_l475_iot1/zephyr.elf
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: disco_l475_iot1
+   :maybe-skip-config:
+   :goals: debug
 
 .. _Disco L475 IoT1 website:
    http://www.st.com/content/st_com/en/products/evaluation-tools/product-evaluation-tools/mcu-eval-tools/stm32-mcu-eval-tools/stm32-mcu-discovery-kits/b-l475e-iot01a.html

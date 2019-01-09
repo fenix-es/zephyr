@@ -26,13 +26,11 @@
 	GTEXT(_SpuriousIntNoErrCodeHandler)
 	GTEXT(_SpuriousIntHandler)
 	GTEXT(_irq_sw_handler)
+	GTEXT(z_dynamic_stubs_begin)
 
 	/* externs */
 
 	GTEXT(__swap)
-#if defined(CONFIG_TIMESLICING)
-	GTEXT(_update_time_slice_before_swap)
-#endif
 
 #ifdef CONFIG_SYS_POWER_MANAGEMENT
 	GTEXT(_sys_power_save_idle_exit)
@@ -56,13 +54,7 @@
  * "application" interrupt service routine).
  *
  * Only the volatile integer registers are saved since ISRs are assumed not to
- * utilize floating point (or SSE) instructions.  If an ISR requires the usage
- * of floating point (or SSE) instructions, it must first invoke nanoCpuFpSave()
- * (or nanoCpuSseSave()) at the beginning of the ISR.  A subsequent
- * nanoCpuFpRestore() (or nanoCpuSseRestore()) is needed just prior to returning
- * from the ISR.  Note that the nanoCpuFpSave(), nanoCpuSseSave(),
- * nanoCpuFpRestore(), and nanoCpuSseRestore() APIs have not been
- * implemented yet.
+ * utilize floating point (or SSE) instructions.
  *
  * WARNINGS
  *
@@ -139,23 +131,9 @@ SECTION_FUNC(TEXT, _interrupt_enter)
 	 */
 	pushl	%edi
 
-#ifdef CONFIG_DEBUG_INFO
-	/*
-	 * Push the cooperative registers on the existing stack as they are
-	 * required by debug tools.
-	 */
-
-	pushl	%esi
-	pushl	%ebx
-	pushl	%ebp
-
-	leal	40(%esp), %ecx   /* Calculate ESP before interrupt occurred */
-	pushl	%ecx             /* Save calculated ESP */
-#endif
 
 #if defined(CONFIG_INT_LATENCY_BENCHMARK) || \
-		defined(CONFIG_KERNEL_EVENT_LOGGER_INTERRUPT) || \
-		defined(CONFIG_KERNEL_EVENT_LOGGER_SLEEP)
+		defined(CONFIG_TRACING)
 
 	/* Save these as we are using to keep track of isr and isr_param */
 	pushl	%eax
@@ -172,13 +150,7 @@ SECTION_FUNC(TEXT, _interrupt_enter)
 	call	_int_latency_start
 #endif
 
-#ifdef CONFIG_KERNEL_EVENT_LOGGER_INTERRUPT
-	call	_sys_k_event_logger_interrupt
-#endif
-
-#ifdef CONFIG_KERNEL_EVENT_LOGGER_SLEEP
-	call	_sys_k_event_logger_exit_sleep
-#endif
+	call	z_sys_trace_isr_enter
 
 	popl	%edx
 	popl	%eax
@@ -194,11 +166,7 @@ SECTION_FUNC(TEXT, _interrupt_enter)
 
 	/* use interrupt stack if not nested */
 	cmpl	$1, _kernel_offset_to_nested(%ecx)
-#ifdef CONFIG_DEBUG_INFO
-	jne	nested_save_isf
-#else
 	jne	alreadyOnIntStack
-#endif
 
 	/*
 	 * switch to base of the interrupt stack: save esp in edi, then load
@@ -213,30 +181,11 @@ SECTION_FUNC(TEXT, _interrupt_enter)
 
 	pushl	%edi			/* Save stack pointer */
 
-#ifdef CONFIG_DEBUG_INFO
-	/*
-	 * The saved stack pointer happens to match the address of the
-	 * interrupt stack frame.  To simplify the exit case, push a dummy ISF
-	 * for the "old" ISF and save it to the _kernel.isf.
-	 */
-	pushl	%edi
-	movl	%edi, _kernel_offset_to_isf(%ecx)
-#endif
-
 #ifdef CONFIG_SYS_POWER_MANAGEMENT
 	cmpl	$0, _kernel_offset_to_idle(%ecx)
 	jne	handle_idle
 	/* fast path is !idle, in the pipeline */
 #endif /* CONFIG_SYS_POWER_MANAGEMENT */
-
-#ifdef CONFIG_DEBUG_INFO
-	jmp alreadyOnIntStack
-
-nested_save_isf:
-	movl	_kernel_offset_to_isf(%ecx), %edi	/* Get old ISF */
-	movl	%esp, _kernel_offset_to_isf(%ecx)	/* Save new ISF */
-	pushl	%edi                            /* Save old ISF */
-#endif
 
 	/* fall through to nested case */
 
@@ -272,7 +221,7 @@ alreadyOnIntStack:
 	sti			/* re-enable interrupts */
 #endif
 	/* Now call the interrupt handler */
-	call	*%edx
+	INDIRECT_CALL(%edx)
 #ifndef CONFIG_X86_IAMCU
 	/* Discard ISR argument */
 	addl	$0x4, %esp
@@ -290,23 +239,12 @@ alreadyOnIntStack:
 
 	/* determine whether exiting from a nested interrupt */
 	movl	$_kernel, %ecx
-#ifdef CONFIG_DEBUG_INFO
-	popl	_kernel_offset_to_isf(%ecx)    /* Restore old ISF */
-#endif
 	decl	_kernel_offset_to_nested(%ecx)	/* dec interrupt nest count */
 	jne	nestedInterrupt                 /* 'iret' if nested case */
 
 
 #ifdef CONFIG_PREEMPT_ENABLED
 	movl	_kernel_offset_to_current(%ecx), %edx
-
-	/*
-	 * Non-preemptible thread ? Do not schedule (see explanation of
-	 * preempt field in kernel_struct.h).
-	 */
-	cmpw	$_NON_PREEMPT_THRESHOLD, _thread_offset_to_preempt(%edx)
-	jae	noReschedule
-
 
 	/* reschedule only if the scheduler says that we must do so */
 	cmpl	%edx, _kernel_offset_to_ready_q_cache(%ecx)
@@ -319,7 +257,7 @@ alreadyOnIntStack:
 	 * debug tools that a preemptive context switch has occurred.
 	 */
 
-#if defined(CONFIG_FP_SHARING) ||  defined(CONFIG_GDB_INFO)
+#if defined(CONFIG_FP_SHARING)
 	orb	$_INT_ACTIVE, _thread_offset_to_thread_state(%edx)
 #endif
 
@@ -333,16 +271,6 @@ alreadyOnIntStack:
 
 	popl	%esp	/* switch back to outgoing thread's stack */
 
-#ifdef CONFIG_DEBUG_INFO
-	popl	%ebp        /* Discard saved ESP */
-	popl	%ebp
-	popl	%ebx
-	popl	%esi
-#endif
-
-#if defined(CONFIG_TIMESLICING)
-	call	_update_time_slice_before_swap
-#endif
 #ifdef CONFIG_STACK_SENTINEL
 	call	_check_stack_sentinel
 #endif
@@ -365,8 +293,7 @@ alreadyOnIntStack:
 	 * returning control to it at the point where it was interrupted ...
 	 */
 
-#if ( defined(CONFIG_FP_SHARING) ||  \
-      defined(CONFIG_GDB_INFO) )
+#if defined(CONFIG_FP_SHARING)
 	/*
 	 * __swap() has restored the floating point registers, if needed.
 	 * Clear the _INT_ACTIVE bit in the interrupted thread's state
@@ -375,7 +302,7 @@ alreadyOnIntStack:
 
 	movl	_kernel + _kernel_offset_to_current, %eax
 	andb	$~_INT_ACTIVE, _thread_offset_to_thread_state(%eax)
-#endif /* CONFIG_FP_SHARING || CONFIG_GDB_INFO */
+#endif /* CONFIG_FP_SHARING */
 
 	/* Restore volatile registers and return to the interrupted thread */
 #ifdef CONFIG_INT_LATENCY_BENCHMARK
@@ -418,12 +345,6 @@ nestedInterrupt:
 	call	_int_latency_stop
 #endif
 
-#ifdef CONFIG_DEBUG_INFO
-	popl	%ebp        /* Discard saved ESP */
-	popl	%ebp
-	popl	%ebx
-	popl	%esi
-#endif
 	popl	%edi
 	popl	%ecx		/* pop volatile registers in reverse order */
 	popl	%edx
@@ -544,3 +465,62 @@ SECTION_FUNC(TEXT, _irq_sw_handler)
 	jmp _interrupt_enter
 
 #endif
+
+#if CONFIG_X86_DYNAMIC_IRQ_STUBS > 0
+z_dynamic_irq_stub_common:
+	/* stub number already pushed */
+	push $z_x86_dynamic_irq_handler
+	jmp _interrupt_enter
+
+/* Create all the dynamic IRQ stubs
+ *
+ * NOTE: Please update DYN_STUB_SIZE in include/arch/x86/arch.h if you change
+ * how large the generated stubs are, otherwise _get_dynamic_stub() will
+ * be unable to correctly determine the offset
+ */
+
+/*
+ * Create nice labels for all the stubs so we can see where we
+ * are in a debugger
+ */
+.altmacro
+.macro __INT_STUB_NUM id
+z_dynamic_irq_stub_\id:
+.endm
+.macro INT_STUB_NUM id
+__INT_STUB_NUM %id
+.endm
+
+z_dynamic_stubs_begin:
+stub_num = 0
+.rept ((CONFIG_X86_DYNAMIC_IRQ_STUBS + Z_DYN_STUB_PER_BLOCK - 1) / Z_DYN_STUB_PER_BLOCK)
+	block_counter = 0
+	.rept Z_DYN_STUB_PER_BLOCK
+		.if stub_num < CONFIG_X86_DYNAMIC_IRQ_STUBS
+			INT_STUB_NUM stub_num
+			/*
+			 * 2-byte push imm8.
+			 */
+			push $stub_num
+
+			/*
+			 * Check to make sure this isn't the last stub in
+			 * a block, in which case we just fall through
+			 */
+			.if (block_counter <> (Z_DYN_STUB_PER_BLOCK - 1) && \
+			     (stub_num <> CONFIG_X86_DYNAMIC_IRQ_STUBS - 1))
+				/* This should always be a 2-byte jmp rel8 */
+				jmp 1f
+			.endif
+			stub_num = stub_num + 1
+			block_counter = block_counter + 1
+		.endif
+	.endr
+	/*
+	 * This must a 5-bvte jump rel32, which is why z_dynamic_irq_stub_common
+	 * is before the actual stubs
+	 */
+1:	jmp z_dynamic_irq_stub_common
+.endr
+#endif /* CONFIG_X86_DYNAMIC_IRQ_STUBS > 0 */
+

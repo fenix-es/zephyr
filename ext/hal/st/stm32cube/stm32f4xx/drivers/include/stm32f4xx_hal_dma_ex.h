@@ -2,8 +2,6 @@
   ******************************************************************************
   * @file    stm32f4xx_hal_dma_ex.h
   * @author  MCD Application Team
-  * @version V1.7.1
-  * @date    14-April-2017
   * @brief   Header file of DMA HAL extension module.
   ******************************************************************************
   * @attention
@@ -52,17 +50,17 @@
 
 /** @addtogroup DMAEx
   * @{
-  */ 
+  */
 
 /* Exported types ------------------------------------------------------------*/
 /** @defgroup DMAEx_Exported_Types DMAEx Exported Types
   * @brief DMAEx Exported types
   * @{
   */
-   
-/** 
-  * @brief  HAL DMA Memory definition  
-  */ 
+
+/**
+  * @brief  HAL DMA Memory definition
+  */
 typedef enum
 {
   MEMORY0      = 0x00U,    /*!< Memory 0     */
@@ -95,7 +93,7 @@ HAL_StatusTypeDef HAL_DMAEx_ChangeMemory(DMA_HandleTypeDef *hdma, uint32_t Addre
 /**
   * @}
   */
-         
+
 /* Private functions ---------------------------------------------------------*/
 /** @defgroup DMAEx_Private_Functions DMAEx Private Functions
   * @brief DMAEx Private functions

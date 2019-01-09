@@ -5,22 +5,33 @@
  */
 
 #include <zephyr.h>
+#include <ztest.h>
 #include <tc_util.h>
 #include <kernel_structs.h>
 #include <irq_offload.h>
+#include <kswap.h>
 
-#define STACKSIZE 2048
+#if defined(CONFIG_X86) && defined(CONFIG_X86_MMU)
+#define STACKSIZE (8192)
+#else
+#define  STACKSIZE (2048)
+#endif
 #define MAIN_PRIORITY 7
 #define PRIORITY 5
 
 static K_THREAD_STACK_DEFINE(alt_stack, STACKSIZE);
 
-#ifdef CONFIG_STACK_SENTINEL
-#define OVERFLOW_STACKSIZE 1024
+#if defined(CONFIG_STACK_SENTINEL) && !defined(CONFIG_ARCH_POSIX)
+#define OVERFLOW_STACKSIZE (STACKSIZE / 2)
 static k_thread_stack_t *overflow_stack =
 		alt_stack + (STACKSIZE - OVERFLOW_STACKSIZE);
 #else
+#if defined(CONFIG_USERSPACE) && defined(CONFIG_ARC)
+/* for ARC, privilege stack is merged into defined stack */
+#define OVERFLOW_STACKSIZE (STACKSIZE + CONFIG_PRIVILEGED_STACK_SIZE)
+#else
 #define OVERFLOW_STACKSIZE STACKSIZE
+#endif
 #endif
 
 static struct k_thread alt_thread;
@@ -28,12 +39,25 @@ volatile int rv;
 
 static volatile int crash_reason;
 
-/* ARM is a special case, in that k_thread_abort() does indeed return
- * instead of calling _Swap() directly. The PendSV exception is queued
- * and immediately fires upon completing the exception path; the faulting
- * thread is never run again.
+/* On some architectures, k_thread_abort(_current) will return instead
+ * of _Swap'ing away.
+ *
+ * On ARM the PendSV exception is queued and immediately fires upon
+ * completing the exception path; the faulting thread is never run
+ * again.
+ *
+ * On Xtensa/asm2 the handler is running in interrupt context and on
+ * the interrupt stack and needs to return through the interrupt exit
+ * code.
+ *
+ * In both cases the thread is guaranteed never to run again once we
+ * return from the _SysFatalErrorHandler().
  */
-#ifndef CONFIG_ARM
+#if !(defined(CONFIG_ARM) || defined(CONFIG_XTENSA_ASM2) || defined(CONFIG_ARC))
+#define ERR_IS_NORETURN 1
+#endif
+
+#ifdef ERR_IS_NORETURN
 FUNC_NORETURN
 #endif
 void _SysFatalErrorHandler(unsigned int reason, const NANO_ESF *pEsf)
@@ -42,7 +66,7 @@ void _SysFatalErrorHandler(unsigned int reason, const NANO_ESF *pEsf)
 	crash_reason = reason;
 
 	k_thread_abort(_current);
-#ifndef CONFIG_ARM
+#ifdef ERR_IS_NORETURN
 	CODE_UNREACHABLE;
 #endif
 }
@@ -70,7 +94,7 @@ void alt_thread1(void)
 
 void alt_thread2(void)
 {
-	int key;
+	unsigned int key;
 
 	key = irq_lock();
 	k_oops();
@@ -81,7 +105,7 @@ void alt_thread2(void)
 
 void alt_thread3(void)
 {
-	int key;
+	unsigned int key;
 
 	key = irq_lock();
 	k_panic();
@@ -93,8 +117,9 @@ void alt_thread3(void)
 void blow_up_stack(void)
 {
 	char buf[OVERFLOW_STACKSIZE];
+
 	TC_PRINT("posting %zu bytes of junk to stack...\n", sizeof(buf));
-	memset(buf, 0xbb, sizeof(buf));
+	(void)memset(buf, 0xbb, sizeof(buf));
 }
 
 void stack_thread1(void)
@@ -110,7 +135,7 @@ void stack_thread1(void)
 
 void stack_thread2(void)
 {
-	int key = irq_lock();
+	unsigned int key = irq_lock();
 
 	/* Test that stack overflow check due to swap works */
 	blow_up_stack();
@@ -121,29 +146,41 @@ void stack_thread2(void)
 	irq_unlock(key);
 }
 
-
-void main(void)
+/**
+ * @brief Test the kernel fatal error handling works correctly
+ * @details Manually trigger the crash with various ways and check
+ * that the kernel is handling that properly or not. Also the crash reason
+ * should match. Check for stack sentinel feature by overflowing the
+ * thread's stack and check for the exception.
+ *
+ * @ingroup kernel_common_tests
+ */
+void test_fatal(void)
 {
-	int expected_reason;
-
 	rv = TC_PASS;
 
-	TC_START("test_fatal");
-
+	/*
+	 * Main thread(test_main) priority was 10 but ztest thread runs at
+	 * priority -1. To run the test smoothly make both main and ztest
+	 * threads run at same priority level.
+	 */
 	k_thread_priority_set(_current, K_PRIO_PREEMPT(MAIN_PRIORITY));
 
+#ifndef CONFIG_ARCH_POSIX
 	TC_PRINT("test alt thread 1: generic CPU exception\n");
 	k_thread_create(&alt_thread, alt_stack,
 			K_THREAD_STACK_SIZEOF(alt_stack),
 			(k_thread_entry_t)alt_thread1,
 			NULL, NULL, NULL, K_PRIO_COOP(PRIORITY), 0,
 			K_NO_WAIT);
-	if (rv == TC_FAIL) {
-		TC_ERROR("thread was not aborted\n");
-		goto out;
-	} else {
-		TC_PRINT("PASS\n");
-	}
+	zassert_not_equal(rv, TC_FAIL, "thread was not aborted");
+#else
+	/*
+	 * We want the native OS to handle segfaults so we can debug it
+	 * with the normal linux tools
+	 */
+	TC_PRINT("test alt thread 1: skipped for POSIX ARCH\n");
+#endif
 
 	TC_PRINT("test alt thread 2: initiate kernel oops\n");
 	k_thread_create(&alt_thread, alt_stack,
@@ -152,17 +189,10 @@ void main(void)
 			NULL, NULL, NULL, K_PRIO_COOP(PRIORITY), 0,
 			K_NO_WAIT);
 	k_thread_abort(&alt_thread);
-	if (crash_reason != _NANO_ERR_KERNEL_OOPS) {
-		TC_ERROR("bad reason code got %d expected %d\n",
-			 crash_reason, _NANO_ERR_KERNEL_OOPS);
-		rv = TC_FAIL;
-	}
-	if (rv == TC_FAIL) {
-		TC_ERROR("thread was not aborted\n");
-		goto out;
-	} else {
-		TC_PRINT("PASS\n");
-	}
+	zassert_equal(crash_reason, _NANO_ERR_KERNEL_OOPS,
+		      "bad reason code got %d expected %d\n",
+		      crash_reason, _NANO_ERR_KERNEL_OOPS);
+	zassert_not_equal(rv, TC_FAIL, "thread was not aborted");
 
 	TC_PRINT("test alt thread 3: initiate kernel panic\n");
 	k_thread_create(&alt_thread, alt_stack,
@@ -171,18 +201,12 @@ void main(void)
 			NULL, NULL, NULL, K_PRIO_COOP(PRIORITY), 0,
 			K_NO_WAIT);
 	k_thread_abort(&alt_thread);
-	if (crash_reason != _NANO_ERR_KERNEL_PANIC) {
-		TC_ERROR("bad reason code got %d expected %d\n",
-			 crash_reason, _NANO_ERR_KERNEL_PANIC);
-		rv = TC_FAIL;
-	}
-	if (rv == TC_FAIL) {
-		TC_ERROR("thread was not aborted\n");
-		goto out;
-	} else {
-		TC_PRINT("PASS\n");
-	}
+	zassert_equal(crash_reason, _NANO_ERR_KERNEL_PANIC,
+		      "bad reason code got %d expected %d\n",
+		      crash_reason, _NANO_ERR_KERNEL_PANIC);
+	zassert_not_equal(rv, TC_FAIL, "thread was not aborted");
 
+#ifndef CONFIG_ARCH_POSIX
 	TC_PRINT("test stack overflow - timer irq\n");
 #ifdef CONFIG_STACK_SENTINEL
 	/* When testing stack sentinel feature, the overflow stack is a
@@ -199,19 +223,16 @@ void main(void)
 			NULL, NULL, NULL, K_PRIO_PREEMPT(PRIORITY), 0,
 			K_NO_WAIT);
 
-	expected_reason = _NANO_ERR_STACK_CHK_FAIL;
-
-	if (crash_reason != expected_reason) {
-		TC_ERROR("bad reason code got %d expected %d\n",
-			 crash_reason, expected_reason);
-		rv = TC_FAIL;
-	}
-	if (rv == TC_FAIL) {
-		TC_ERROR("thread was not aborted\n");
-		goto out;
-	} else {
-		TC_PRINT("PASS\n");
-	}
+#ifdef CONFIG_ARM
+	/* FIXME: See #7706 */
+	zassert_true(crash_reason == _NANO_ERR_STACK_CHK_FAIL ||
+		     crash_reason == _NANO_ERR_HW_EXCEPTION, NULL);
+#else
+	zassert_equal(crash_reason, _NANO_ERR_STACK_CHK_FAIL,
+		      "bad reason code got %d expected %d\n",
+		      crash_reason, _NANO_ERR_STACK_CHK_FAIL);
+#endif
+	zassert_not_equal(rv, TC_FAIL, "thread was not aborted");
 
 	/* Stack sentinel has to be invoked, make sure it happens during
 	 * a context switch. Also ensure HW-based solutions can run more
@@ -227,18 +248,29 @@ void main(void)
 			(k_thread_entry_t)stack_thread2,
 			NULL, NULL, NULL, K_PRIO_PREEMPT(PRIORITY), 0,
 			K_NO_WAIT);
-	if (crash_reason != _NANO_ERR_STACK_CHK_FAIL) {
-		TC_ERROR("bad reason code got %d expected %d\n",
-			 crash_reason, _NANO_ERR_STACK_CHK_FAIL);
-		rv = TC_FAIL;
-	}
-	if (rv == TC_FAIL) {
-		TC_ERROR("thread was not aborted\n");
-		goto out;
-	} else {
-		TC_PRINT("PASS\n");
-	}
-out:
-	TC_END_RESULT(rv);
-	TC_END_REPORT(rv);
+#ifdef CONFIG_CPU_HAS_NXP_MPU
+	/* FIXME: See #7706 */
+	zassert_true(crash_reason == _NANO_ERR_STACK_CHK_FAIL ||
+		     crash_reason == _NANO_ERR_HW_EXCEPTION, NULL);
+#else
+	zassert_equal(crash_reason, _NANO_ERR_STACK_CHK_FAIL,
+		      "bad reason code got %d expected %d\n",
+		      crash_reason, _NANO_ERR_STACK_CHK_FAIL);
+#endif
+	zassert_not_equal(rv, TC_FAIL, "thread was not aborted");
+#else
+	TC_PRINT("test stack overflow - skipped for POSIX arch\n");
+	/*
+	 * We do not have a stack check for the posix ARCH
+	 * again we relay on the native OS
+	 */
+#endif
+}
+
+/*test case main entry*/
+void test_main(void)
+{
+	ztest_test_suite(fatal,
+			ztest_unit_test(test_fatal));
+	ztest_run_test_suite(fatal);
 }

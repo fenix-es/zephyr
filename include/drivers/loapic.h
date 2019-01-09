@@ -6,8 +6,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef __INCloapich
-#define __INCloapich
+#ifndef ZEPHYR_INCLUDE_DRIVERS_LOAPIC_H_
+#define ZEPHYR_INCLUDE_DRIVERS_LOAPIC_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,7 +45,6 @@ extern "C" {
 #define LOAPIC_LVT_MASKED 0x00010000   /* mask */
 
 #ifndef _ASMLANGUAGE
-#include <device.h>
 
 extern void _loapic_int_vec_set(unsigned int irq, unsigned int vector);
 extern void _loapic_irq_enable(unsigned int irq);
@@ -61,4 +60,4 @@ extern void _lakemont_eoi(void);
 }
 #endif
 
-#endif /* __INCloapich */
+#endif /* ZEPHYR_INCLUDE_DRIVERS_LOAPIC_H_ */

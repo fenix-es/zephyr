@@ -31,8 +31,8 @@ char *expected = "22 113 10000 32768 40000 22\n"
 
 size_t stv = 22;
 unsigned char uc = 'q';
-unsigned short int usi = 10000;
-unsigned int ui = 32768;
+unsigned short int usi = 10000U;
+unsigned int ui = 32768U;
 unsigned long ul = 40000;
 
 /* FIXME
@@ -57,8 +57,19 @@ static int ram_console_out(int character)
 	pos = (pos + 1) % BUF_SZ;
 	return _old_char_out(character);
 }
+/**
+ * @addtogroup kernel_common_tests
+ * @{
+ */
 
-void printk_test(void)
+/**
+ * @brief Test printk() functionality
+ *
+ * @see printk(), __printk_get_hook(),
+ * __printk_hook_install(), snprintk()
+ *
+ */
+void test_printk(void)
 {
 	int count;
 
@@ -82,7 +93,7 @@ void printk_test(void)
 	ram_console[pos] = '\0';
 	zassert_true((strcmp(ram_console, expected) == 0), "printk failed");
 
-	memset(ram_console, 0, sizeof(ram_console));
+	(void)memset(ram_console, 0, sizeof(ram_console));
 	count = 0;
 
 	count += snprintk(ram_console + count, sizeof(ram_console) - count,
@@ -113,3 +124,6 @@ void printk_test(void)
 	ram_console[count] = '\0';
 	zassert_true((strcmp(ram_console, expected) == 0), "snprintk failed");
 }
+/**
+ * @}
+ */

@@ -38,6 +38,30 @@ mapping:
      "filter":
        type: str
        required: no
+     "harness":
+       type: str
+       required: no
+     "harness_config":
+       type: map
+       required: no
+       mapping:
+         "type":
+            type: str
+            required: no
+         "fixture":
+            type: str
+            required: no
+         "ordered":
+            type: bool
+            required: no
+         "repeat":
+            type: int
+            required: no
+         "regex":
+            type: seq
+            required: no
+            sequence:
+              - type: str
      "min_ram":
        type: int
        required: no
@@ -52,7 +76,7 @@ mapping:
        required: no
      "tags":
        type: str
-       required: yes
+       required: no
      "timeout":
        type: int
        required: no
@@ -82,19 +106,13 @@ mapping:
       "description":
         type: str
         required: no
-      "platforms":
-        type: str
-        required: no
   # The list of testcases -- IDK why this is a sequence of
   # maps maps, shall just be a sequence of maps
   # maybe it is just an artifact?
   "tests":
-    type: seq
-    required: yes
-    sequence:
-      - type: map
-        matching-rule: "any"
-        mapping:
+      type: map
+      matching-rule: "any"
+      mapping:
           # The key for the testname is any, so
           # regex;(([a-zA-Z0-9_]+)) for this to work, note below we
           # make it required: no
@@ -133,6 +151,30 @@ mapping:
              "filter":
                type: str
                required: no
+             "harness":
+               type: str
+               required: no
+             "harness_config":
+               type: map
+               required: no
+               mapping:
+                 "type":
+                    type: str
+                    required: no
+                 "fixture":
+                    type: str
+                    required: no
+                 "ordered":
+                    type: bool
+                    required: no
+                 "repeat":
+                    type: int
+                    required: no
+                 "regex":
+                    type: seq
+                    required: no
+                    sequence:
+                      - type: str
              "min_ram":
                type: int
                required: no

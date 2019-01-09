@@ -7,7 +7,8 @@ Overview
 ********
 The SimpleLink Wi-Fi CC3220SF LaunchPad development kit (CC3220SF-LAUNCHXL)
 highlights CC3220SF, a single-chip wireless microcontroller (MCU) with
-1MB Flash, 256KB of RAM and enhanced security features.
+1MB internal flash, 4MB external serial flash, 256KB of RAM and enhanced
+security features.
 
 See the `TI CC3220 Product Page`_ for details.
 
@@ -27,7 +28,7 @@ Features:
 * XDS110-based JTAG emulation with serial port for flash programming
 
 Details on the CC3220SF LaunchXL development board can be found in the
-`CC3220SF LaunchXL User's Guide`_.
+`CC3220SF LaunchPad Dev Kit Hardware User's Guide`_.
 
 Hardware
 ********
@@ -35,7 +36,7 @@ Hardware
 The CC3220SF SoC has two MCUs:
 
 #. Applications MCU - an ARM |reg| Cortex |reg|-M4 Core at 80 MHz, with 256Kb RAM,
-   and access to external serial 1Mb flash with bootloader and peripheral
+   and access to external serial 4MB flash with bootloader and peripheral
    drivers in ROM.
 
 #. Network Coprocessor (NWP) - a dedicated ARM MCU, which completely
@@ -56,6 +57,16 @@ driver support.
 +-----------+------------+-----------------------+
 | GPIO      | on-chip    | gpio                  |
 +-----------+------------+-----------------------+
+| I2C       | on-chip    | i2c                   |
++-----------+------------+-----------------------+
+| SPI_0     | on-chip    | WiFi host driver      |
++-----------+------------+-----------------------+
+
+.. note::
+
+   For consistency with TI SimpleLink SDK and BoosterPack examples,
+   the I2C driver defaults to I2C_BITRATE_FAST mode (400 kHz) bus speed
+   on bootup.
 
 The accelerometer, temperature sensors, or other peripherals
 accessible through the BoosterPack, are not currently supported.
@@ -101,98 +112,164 @@ UniFlash.
 
 Note that zephyr.bin produced by the Zephyr SDK may not load via
 UniFlash tool.  If encountering difficulties, use the zephyr.elf
-file and dslite.sh instead.
+file and openocd instead (see below).
 
 The following instructions are geared towards Linux developers who
 prefer command line tools to an IDE.
 
-Flashing
-========
-
-The TI UniFlash tool can be used to download a program into flash, which
-will persist over subsequent reboots.
+Before flashing and debugging the board, there are a few one-time board
+setup steps to follow.
 
 Prerequisites:
---------------
+==============
 
-#. Python 2.7 (the DSLite tool does not work with Python v 3.x).
-#. Download and install `UniFlash`_ version 4.1 for Linux.
-#. Jumper SOP[2..0] (J15) to 010, and connect the USB cable to the PC.
+#. Download and install the latest version of `UniFlash`_.
+#. Jumper SOP[2..0] (J15) to [010], and connect the USB cable to the PC.
 
    This should result in a new device "Texas Instruments XDS110 Embed
    with CMSIS-DAP" appearing at /dev/ttyACM1 and /dev/ttyACM0.
 
-#. Update the service pack, and place board in "Development Mode".
+#. Update the service pack, and place the board in "Development Mode".
 
-   Follow the instructions in Section 3.4 "Download the Application",
-   in the `CC3220 Getting Started Guide`_, except for steps 5 and 6 which
-   select an MCU image.
+   Setting "Development Mode" enables the JTAG interface, necessary
+   for subsequent use of OpenOCD and updating XDS110 firmware.
+
+   Follow the instructions in Section 2.4 "Download the Application",
+   in the `CC3220 Getting Started Guide`_, except for steps 5 and 6 in
+   Section 2.4.1 which select an MCU image.
 
 #. Ensure the XDS-110 emulation firmware is updated.
 
    Download and install the latest `XDS-110 emulation package`_.
+
    Follow the directions here to update the firmware:
-   http://processors.wiki.ti.com/index.php/XDS110#Updating_the_XDS110_Firmware
+   http://software-dl.ti.com/ccs/esd/documents/xdsdebugprobes/emu_xds110.html#updating-the-xds110-firmware
 
-#. Ensure CONFIG_XIP=y is set.
+   Note that the emulation package install may place the xdsdfu utility
+   in <install_dir>/ccs_base/common/uscif/xds110/.
 
-   Add a 'CONFIG_XIP=y' line to the project's prj.conf file.
+#. Switch Jumper SOP[2..0] (J15) back to [001].
+
+   Remove power from the board (disconnect USB cable) before switching jumpers.
+
+#. Install TI OpenOCD
+
+   Clone the TI OpenOCD git repository from: http://git.ti.com/sdo-emu/openocd.
+   Follow the instructions in the Release Notes in that repository to build
+   and install.
+
+   Since the default TI OpenOCD installation is /usr/local/bin/,
+   and /usr/local/share/, you may want to backup any current openocd
+   installations there.
+   If you decide to change the default installation location, also update
+   the OPENOCD path variable in :file:`boards/arm/cc3220sf_launchxl/board.cmake`.
+
+#. Ensure CONFIG_XIP=y (default) is set.
 
    This locates the program into flash, and sets CONFIG_CC3220SF_DEBUG=y,
    which prepends a debug header enabling the flash to persist over
    subsequent reboots, bypassing the bootloader flash signature
    verification.
 
-   See Section of the 21.10 of the `CC3220 TRM`_ for details on the
-   secure flash boot process.
+   See Section 21.10 "Debugging Flash User Application Using JTAG" of the
+   `CC3220 TRM`_ for details on the secure flash boot process.
 
-Flashing Command:
------------------
 
-Once the above prerequisites are met, use the UniFlash command line tool
-to flash the Zephyr image:
+Once the above prerequisites are met, applications for the ``_cc3220sf_launchxl``
+board can be built, flashed, and debugged with openocd and gdb per the Zephyr
+Application Development Primer (see :ref:`build_an_application` and
+:ref:`application_run`).
 
-.. code-block:: console
+Flashing
+========
 
-  % dslite.sh -c $ZEPHYR_BASE/boards/arm/cc3220sf_launchxl/support/CC3220SF.ccxml \
-    -e -f zephyr.elf
+To build and flash an application, execute the following commands for <my_app>:
 
-The CC3220SF.ccxml is a configuration file written by TI's Code Composer
-Studio IDE, and required for the dslite.sh tool.
+.. zephyr-app-commands::
+   :zephyr-app: <my_app>
+   :board: cc3220sf_launchxl
+   :goals: flash
 
-To see program output from UART0, one can execute in a separate terminal
-window:
+This will load the image into flash.
+
+To see program output from UART0, connect a separate terminal window:
 
 .. code-block:: console
 
   % screen /dev/ttyACM0 115200 8N1
 
+Then press the reset button (SW1) on the board to run the program.
+
 Debugging
 =========
 
-It is possible to enable loading and debugging of an application via
-openocd and gdb, by linking and locating the program completely in SRAM.
+To debug a previously flashed image, after resetting the board, use the 'debug'
+build target:
 
-Prerequisites:
---------------
+.. zephyr-app-commands::
+   :zephyr-app: <my_app>
+   :board: cc3220sf_launchxl
+   :maybe-skip-config:
+   :goals: debug
 
-Follow the same prerequisites as in Flashing above, in addition:
 
-#. Ensure OpenOCD v0.9+ is configured/built with CMSIS-DAP support.
-#. Power off the board, jumper SOP[2..0] (J15) to 001, and reconnect
-   the USB cable to the PC.
-#. Set CONFIG_XIP=n and build the Zephyr elf file.
+WiFi Support
+************
 
-The necessary OpenOCD CFG and sample gdbinit scripts can be found in
-:file:`boards/arm/cc3220sf_launchxl/support/`.
+The SimpleLink Host Driver, imported from the SimpleLink SDK, has been ported
+to Zephyr, and communicates over a dedicated SPI to the network co-processor.
+It is available as a Zephyr WiFi device driver in
+:file:`drivers/wifi/simplelink`.
 
-Debugging Command
------------------
+Usage:
+======
 
-.. code-block:: console
+Set :option:`CONFIG_WIFI_SIMPLELINK` and :option:`CONFIG_WIFI` to ``y``
+to enable WiFi.
+See :file:`samples/net/wifi/boards/cc3220sf_launchxl.conf`.
 
-  % arm-none-eabi-gdb -x $ZEPHYR_BASE/boards/arm/cc3220sf_launchxl/support/gdbinit_xds110 \
-    zephyr.elf
+Provisioning:
+=============
+
+SimpleLink provides a few rather sophisticated WiFi provisioning methods.
+To keep it simple for Zephyr development and demos, the SimpleLink
+"Fast Connect" policy is enabled, with one-shot scanning.
+This enables the cc3220sf_launchxl to automatically reconnect to the last
+good known access point (AP), without having to restart a scan, and
+re-specify the SSID and password.
+
+To connect to an AP, first run the Zephyr WiFi shell sample application,
+and connect to a known AP with SSID and password.
+
+See :ref:`wifi_sample`
+
+Once the connection succeeds, the network co-processor keeps the AP identity in
+its persistent memory.  Newly loaded WiFi applications then need not explicitly
+execute any WiFi scan or connect operations, until the need to change to a new AP.
+
+Secure Socket Offload
+*********************
+
+The SimpleLink WiFi driver provides socket operations to the Zephyr socket
+offload point, enabling Zephyr BSD socket API calls to be directed to the
+SimpleLink WiFi driver, by setting :option:`CONFIG_NET_SOCKETS_OFFLOAD`
+to ``y``.
+
+Secure socket (TLS) communication is handled as part of the socket APIs,
+and enabled by:
+
+- setting both :option:`CONFIG_NET_SOCKETS_SOCKOPT_TLS`
+  and :option:`CONFIG_TLS_CREDENTIAL_FILENAMES` to ``y``,
+- using the TI Uniflash tool to program the required certificates and
+  keys to the secure flash filesystem, and enabling the TI Trusted
+  Root-Certificate Catalog.
+
+See :ref:`sockets-http-get` and
+:file:`samples/net/sockets/http_get/boards/cc3220sf_launchxl.conf` for an
+example.
+
+See the document `Simplelink WiFi Certificates Handling`_ for details on
+using the TI UniFlash tool for certificate programming.
 
 References
 **********
@@ -204,13 +281,13 @@ CC32xx Wiki:
     http://www.ti.com/product/cc3220
 
 .. _CC3220 TRM:
-   http://www.ti.com/lit/ug/swru465/swru465.pdf
+   http://www.ti.com/lit/pdf/swru465
 
 .. _CC3220 Programmer's Guide:
-   http://www.ti.com/lit/ug/swru464/swru464.pdf
+   http://www.ti.com/lit/pdf/swru464
 
 .. _CC3220 Getting Started Guide:
-   http://www.ti.com/lit/ug/swru461/swru461.pdf
+   http://www.ti.com/lit/pdf/swru461
 
 .. _UniFlash:
    http://processors.wiki.ti.com/index.php/Category:CCS_UniFlash
@@ -218,8 +295,11 @@ CC32xx Wiki:
 .. _CC3220 SDK:
    http://www.ti.com/tool/download/SIMPLELINK-CC3220-SDK
 
-.. _CC3220SF LaunchXL User's Guide:
-   http://www.ti.com/lit/ug/swru463/swru463.pdf
+.. _CC3220SF LaunchPad Dev Kit Hardware User's Guide:
+   http://www.ti.com/lit/pdf/swru463
 
 ..  _XDS-110 emulation package:
-   http://processors.wiki.ti.com/index.php/XDS_Emulation_Software_Package#XDS110_Reset_Download
+   http://processors.wiki.ti.com/index.php/XDS_Emulation_Software_Package#XDS_Emulation_Software_.28emupack.29_Download
+
+..  _Simplelink WiFi Certificates Handling:
+   http://www.ti.com/lit/pdf/swpu332

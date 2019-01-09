@@ -16,10 +16,8 @@
  * rest should not be triggered until the kernel is ready to handle them.
  */
 
-#include <board.h>
 #include <toolchain.h>
 #include <linker/sections.h>
-#include <drivers/system_timer.h>
 #include "vector_table.h"
 
 _ASM_FILE_PROLOGUE
@@ -39,7 +37,7 @@ SECTION_SUBSEC_FUNC(exc_vector_table,_vector_table_section,_vector_table)
     .word __nmi
 
     .word __hard_fault
-#if defined(CONFIG_ARMV6_M)
+#if defined(CONFIG_ARMV6_M_ARMV8_M_BASELINE)
     .word __reserved
     .word __reserved
     .word __reserved
@@ -49,11 +47,15 @@ SECTION_SUBSEC_FUNC(exc_vector_table,_vector_table_section,_vector_table)
     .word __reserved
     .word __svc
     .word __reserved
-#elif defined(CONFIG_ARMV7_M)
+#elif defined(CONFIG_ARMV7_M_ARMV8_M_MAINLINE)
     .word __mpu_fault
     .word __bus_fault
     .word __usage_fault
+#if defined(CONFIG_ARM_SECURE_FIRMWARE)
+    .word __secure_fault
+#else
     .word __reserved
+#endif /* CONFIG_ARM_SECURE_FIRMWARE */
     .word __reserved
     .word __reserved
     .word __reserved
@@ -61,7 +63,7 @@ SECTION_SUBSEC_FUNC(exc_vector_table,_vector_table_section,_vector_table)
     .word __debug_monitor
 #else
 #error Unknown ARM architecture
-#endif /* CONFIG_ARMV6_M */
+#endif /* CONFIG_ARMV6_M_ARMV8_M_BASELINE */
     .word __reserved
     .word __pendsv
 #if defined(CONFIG_CORTEX_M_SYSTICK)

@@ -1,16 +1,20 @@
 /*
- * Copyright (c) 2016 Nordic Semiconductor ASA
+ * Copyright (c) 2016-2018 Nordic Semiconductor ASA
  * Copyright (c) 2016 Vinayak Kariappa Chettimada
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <stdbool.h>
 #include <zephyr/types.h>
 #include <soc.h>
 
 #include "hal/cntr.h"
+#include "hal/ticker.h"
+
 #include "ticker.h"
 
+#define LOG_MODULE_NAME bt_ctlr_ticker
 #include "common/log.h"
 #include "hal/debug.h"
 
@@ -18,12 +22,6 @@
  * Defines
  ****************************************************************************/
 #define DOUBLE_BUFFER_SIZE 2
-#define COUNTER_CMP_OFFSET_MIN 3
-
-#define CALL_ID_TRIGGER 0
-#define CALL_ID_WORKER 1
-#define CALL_ID_JOB 2
-#define CALL_ID_USER 3
 
 /*****************************************************************************
  * Types
@@ -39,8 +37,8 @@ struct ticker_node {
 	ticker_timeout_func timeout_func;
 	void  *context;
 
-	u16_t ticks_to_expire_minus;
-	u16_t ticks_slot;
+	u32_t ticks_to_expire_minus;
+	u32_t ticks_slot;
 	u16_t lazy_periodic;
 	u16_t lazy_current;
 	u32_t remainder_periodic;
@@ -62,16 +60,16 @@ struct ticker_user_op_start {
 	u32_t ticks_periodic;
 	u32_t remainder_periodic;
 	u16_t lazy;
-	u16_t ticks_slot;
+	u32_t ticks_slot;
 	ticker_timeout_func fp_timeout_func;
 	void  *context;
 };
 
 struct ticker_user_op_update {
-	u16_t ticks_drift_plus;
-	u16_t ticks_drift_minus;
-	u16_t ticks_slot_plus;
-	u16_t ticks_slot_minus;
+	u32_t ticks_drift_plus;
+	u32_t ticks_drift_minus;
+	u32_t ticks_slot_plus;
+	u32_t ticks_slot_minus;
 	u16_t lazy;
 	u8_t  force;
 };
@@ -112,20 +110,22 @@ struct ticker_instance {
 	u8_t  ticks_elapsed_last;
 	u32_t ticks_elapsed[DOUBLE_BUFFER_SIZE];
 	u32_t ticks_current;
-	u8_t  ticker_id_head;
+	u32_t ticks_slot_previous;
 	u8_t  ticker_id_slot_previous;
-	u16_t ticks_slot_previous;
+	u8_t  ticker_id_head;
 	u8_t  job_guard;
 	u8_t  worker_trigger;
-	u8_t  (*fp_caller_id_get)(u8_t user_id);
-	void  (*fp_sched)(u8_t caller_id, u8_t callee_id, u8_t chain);
-	void  (*fp_cmp_set)(u32_t value);
+
+	ticker_caller_id_get_cb_t caller_id_get_cb;
+	ticker_sched_cb_t         sched_cb;
+	ticker_trigger_set_cb_t   trigger_set_cb;
 };
 
 /*****************************************************************************
  * Global instances
  ****************************************************************************/
-static struct ticker_instance _instance[2];
+#define TICKER_INSTANCE_MAX 1
+static struct ticker_instance _instance[TICKER_INSTANCE_MAX];
 
 /*****************************************************************************
  * Static Functions
@@ -172,7 +172,7 @@ static void ticker_by_next_slot_get(struct ticker_instance *instance,
 	    (*ticks_current != instance->ticks_current)) {
 		_ticker_id_head = instance->ticker_id_head;
 		*ticks_current = instance->ticks_current;
-		_ticks_to_expire = 0;
+		_ticks_to_expire = 0U;
 	} else {
 		ticker = &node[_ticker_id_head];
 		_ticker_id_head = ticker->next;
@@ -226,7 +226,7 @@ static u8_t ticker_enqueue(struct ticker_instance *instance, u8_t id)
 			if (ticks_slot_previous > ticks_to_expire_current) {
 				ticks_slot_previous -= ticks_to_expire_current;
 			} else {
-				ticks_slot_previous = 0;
+				ticks_slot_previous = 0U;
 			}
 		}
 		previous = current;
@@ -275,7 +275,7 @@ static u32_t ticker_dequeue(struct ticker_instance *instance, u8_t id)
 	node = &instance->node[0];
 	previous = instance->ticker_id_head;
 	current = previous;
-	total = 0;
+	total = 0U;
 	ticker_current = 0;
 	while (current != TICKER_NULL) {
 
@@ -318,22 +318,23 @@ static u32_t ticker_dequeue(struct ticker_instance *instance, u8_t id)
 	return (total + timeout);
 }
 
-static inline void ticker_worker(struct ticker_instance *instance)
+void ticker_worker(void *param)
 {
+	struct ticker_instance *instance = param;
 	struct ticker_node *node;
 	u32_t ticks_elapsed;
 	u32_t ticks_expired;
 	u8_t ticker_id_head;
 
 	/* Defer worker if job running */
-	instance->worker_trigger = 1;
+	instance->worker_trigger = 1U;
 	if (instance->job_guard) {
 		return;
 	}
 
 	/* If no tickers to expire, do nothing */
 	if (instance->ticker_id_head == TICKER_NULL) {
-		instance->worker_trigger = 0;
+		instance->worker_trigger = 0U;
 
 		return;
 	}
@@ -343,7 +344,7 @@ static inline void ticker_worker(struct ticker_instance *instance)
 					      instance->ticks_current);
 
 	/* initialise actual elapsed ticks being consumed */
-	ticks_expired = 0;
+	ticks_expired = 0U;
 
 	/* auto variable containing the head of tickers expiring */
 	ticker_id_head = instance->ticker_id_head;
@@ -384,7 +385,7 @@ static inline void ticker_worker(struct ticker_instance *instance)
 			ticks_at_expire = (instance->ticks_current +
 					   ticks_expired -
 					   ticker->ticks_to_expire_minus) &
-					  0x00FFFFFF;
+					   HAL_TICKER_CNTR_MASK;
 
 			DEBUG_TICKER_TASK(1);
 			ticker->timeout_func(ticks_at_expire,
@@ -401,25 +402,26 @@ static inline void ticker_worker(struct ticker_instance *instance)
 
 		last = instance->ticks_elapsed_last + 1;
 		if (last == DOUBLE_BUFFER_SIZE) {
-			last = 0;
+			last = 0U;
 		}
 		instance->ticks_elapsed_last = last;
 	}
 	instance->ticks_elapsed[instance->ticks_elapsed_last] = ticks_expired;
 
-	instance->worker_trigger = 0;
+	instance->worker_trigger = 0U;
 
-	instance->fp_sched(CALL_ID_WORKER, CALL_ID_JOB, 1);
+	instance->sched_cb(TICKER_CALL_ID_WORKER, TICKER_CALL_ID_JOB, 1,
+			   instance);
 }
 
 static void ticks_to_expire_prep(struct ticker_node *ticker,
 				 u32_t ticks_current, u32_t ticks_at_start)
 {
 	u32_t ticks_to_expire = ticker->ticks_to_expire;
-	u16_t ticks_to_expire_minus = ticker->ticks_to_expire_minus;
+	u32_t ticks_to_expire_minus = ticker->ticks_to_expire_minus;
 
 	/* Calculate ticks to expire for this new node */
-	if (((ticks_at_start - ticks_current) & BIT(23)) == 0) {
+	if (!((ticks_at_start - ticks_current) & BIT(HAL_TICKER_CNTR_MSBIT))) {
 		ticks_to_expire += ticker_ticks_diff_get(ticks_at_start,
 							 ticks_current);
 	} else {
@@ -432,17 +434,17 @@ static void ticks_to_expire_prep(struct ticker_node *ticker,
 		} else {
 			ticks_to_expire_minus +=
 			    (delta_current_start - ticks_to_expire);
-			ticks_to_expire = 0;
+			ticks_to_expire = 0U;
 		}
 	}
 
 	/* Handle any drifts requested */
 	if (ticks_to_expire > ticks_to_expire_minus) {
 		ticks_to_expire -= ticks_to_expire_minus;
-		ticks_to_expire_minus = 0;
+		ticks_to_expire_minus = 0U;
 	} else {
 		ticks_to_expire_minus -= ticks_to_expire;
-		ticks_to_expire = 0;
+		ticks_to_expire = 0U;
 	}
 
 	ticker->ticks_to_expire = ticks_to_expire;
@@ -451,27 +453,35 @@ static void ticks_to_expire_prep(struct ticker_node *ticker,
 
 static u8_t ticker_remainder_inc(struct ticker_node *ticker)
 {
+#ifdef HAL_TICKER_REMAINDER_RANGE
 	ticker->remainder_current += ticker->remainder_periodic;
 	if ((ticker->remainder_current < BIT(31)) &&
-	    (ticker->remainder_current > (30517578UL / 2))) {
-		ticker->remainder_current -= 30517578UL;
+	    (ticker->remainder_current > (HAL_TICKER_REMAINDER_RANGE >> 1))) {
+		ticker->remainder_current -= HAL_TICKER_REMAINDER_RANGE;
 		return 1;
 	}
 	return 0;
+#else
+	return 0;
+#endif
 }
 
 static u8_t ticker_remainder_dec(struct ticker_node *ticker)
 {
-	u8_t decrement = 0;
+#ifdef HAL_TICKER_REMAINDER_RANGE
+	u8_t decrement = 0U;
 
 	if ((ticker->remainder_current >= BIT(31)) ||
-	    (ticker->remainder_current <= (30517578UL / 2))) {
+	    (ticker->remainder_current <= (HAL_TICKER_REMAINDER_RANGE >> 1))) {
 		decrement++;
-		ticker->remainder_current += 30517578UL;
+		ticker->remainder_current += HAL_TICKER_REMAINDER_RANGE;
 	}
 	ticker->remainder_current -= ticker->remainder_periodic;
 
 	return decrement;
+#else
+	return 0;
+#endif
 }
 
 static void ticker_job_op_cb(struct ticker_user_op *user_op, u32_t status)
@@ -499,7 +509,7 @@ static inline void ticker_job_node_update(struct ticker_node *ticker,
 	} else {
 		ticker->ticks_to_expire_minus += ticks_elapsed -
 						 ticks_to_expire;
-		ticks_to_expire = 0;
+		ticks_to_expire = 0U;
 	}
 
 	if ((ticker->ticks_periodic != 0) &&
@@ -533,7 +543,7 @@ static inline void ticker_job_node_update(struct ticker_node *ticker,
 	if (ticker->ticks_slot > user_op->params.update.ticks_slot_minus) {
 		ticker->ticks_slot -= user_op->params.update.ticks_slot_minus;
 	} else {
-		ticker->ticks_slot = 0;
+		ticker->ticks_slot = 0U;
 	}
 
 	if (user_op->params.update.force != 0) {
@@ -568,7 +578,7 @@ static inline void ticker_job_node_manage(struct ticker_instance *instance,
 
 		if (instance->ticker_id_slot_previous == user_op->id) {
 			instance->ticker_id_slot_previous = TICKER_NULL;
-			instance->ticks_slot_previous = 0;
+			instance->ticks_slot_previous = 0U;
 		}
 	}
 
@@ -587,7 +597,7 @@ static inline u8_t ticker_job_list_manage(struct ticker_instance *instance,
 	struct ticker_user *users;
 	u8_t count_user;
 
-	pending = 0;
+	pending = 0U;
 	node = &instance->node[0];
 	users = &instance->user[0];
 	count_user = instance->count_user;
@@ -610,7 +620,7 @@ static inline u8_t ticker_job_list_manage(struct ticker_instance *instance,
 			prev = user->middle;
 			middle = user->middle + 1;
 			if (middle == user->count_user_op) {
-				middle = 0;
+				middle = 0U;
 			}
 			user->middle = middle;
 
@@ -652,14 +662,16 @@ static inline u8_t ticker_job_list_manage(struct ticker_instance *instance,
 				 */
 				/* sched job to run after worker bottom half.
 				 */
-				instance->fp_sched(CALL_ID_JOB, CALL_ID_JOB, 1);
+				instance->sched_cb(TICKER_CALL_ID_JOB,
+						   TICKER_CALL_ID_JOB, 1,
+						   instance);
 
 				/* Update the index upto which management is
 				 * complete.
 				 */
 				user->middle = prev;
 
-				pending = 1;
+				pending = 1U;
 
 				break;
 			}
@@ -678,7 +690,7 @@ static inline void ticker_job_worker_bh(struct ticker_instance *instance,
 	u32_t ticks_expired;
 
 	node = &instance->node[0];
-	ticks_expired = 0;
+	ticks_expired = 0U;
 	while (instance->ticker_id_head != TICKER_NULL) {
 		struct ticker_node *ticker;
 		u32_t ticks_to_expire;
@@ -704,7 +716,7 @@ static inline void ticker_job_worker_bh(struct ticker_instance *instance,
 			instance->ticks_slot_previous -= ticks_to_expire;
 		} else {
 			instance->ticker_id_slot_previous = TICKER_NULL;
-			instance->ticks_slot_previous = 0;
+			instance->ticks_slot_previous = 0U;
 		}
 
 		/* save current ticks_slot_previous */
@@ -714,7 +726,7 @@ static inline void ticker_job_worker_bh(struct ticker_instance *instance,
 		}
 
 		/* ticker expired, set ticks_to_expire zero */
-		ticker->ticks_to_expire = 0;
+		ticker->ticks_to_expire = 0U;
 
 		/* remove the expired ticker from head */
 		instance->ticker_id_head = ticker->next;
@@ -724,7 +736,7 @@ static inline void ticker_job_worker_bh(struct ticker_instance *instance,
 			u32_t count;
 
 			/* Prepare for next interval */
-			ticks_to_expire = 0;
+			ticks_to_expire = 0U;
 			count = 1 + ticker->lazy_periodic;
 			while (count--) {
 				ticks_to_expire += ticker->ticks_periodic;
@@ -734,7 +746,7 @@ static inline void ticker_job_worker_bh(struct ticker_instance *instance,
 			ticks_to_expire_prep(ticker, instance->ticks_current,
 					     (ticks_previous + ticks_expired));
 			ticker->lazy_current = ticker->lazy_periodic;
-			ticker->force = 0;
+			ticker->force = 0U;
 
 			/* Add to insert list */
 			ticker->next = *insert_head;
@@ -762,11 +774,11 @@ static inline void ticker_job_op_start(struct ticker_node *ticker,
 	ticker->timeout_func = start->fp_timeout_func;
 	ticker->context = start->context;
 	ticker->ticks_to_expire = start->ticks_first;
-	ticker->ticks_to_expire_minus = 0;
+	ticker->ticks_to_expire_minus = 0U;
 	ticks_to_expire_prep(ticker, ticks_current, start->ticks_at_start);
-	ticker->remainder_current = 0;
-	ticker->lazy_current = 0;
-	ticker->force = 1;
+	ticker->remainder_current = 0U;
+	ticker->lazy_current = 0U;
+	ticker->force = 1U;
 }
 
 static inline u32_t ticker_job_insert(struct ticker_instance *instance,
@@ -786,7 +798,7 @@ static inline u32_t ticker_job_insert(struct ticker_instance *instance,
 		skip = ticker->lazy_current -
 		       ticker->lazy_periodic;
 	} else {
-		skip = 0;
+		skip = 0U;
 	}
 
 	/* If insert collides, remove colliding or advance to next interval */
@@ -805,7 +817,7 @@ static inline u32_t ticker_job_insert(struct ticker_instance *instance,
 				skip_collide = ticker_collide->lazy_current -
 					       ticker_collide->lazy_periodic;
 			} else {
-				skip_collide = 0;
+				skip_collide = 0U;
 			}
 
 			if (ticker_collide->ticks_periodic &&
@@ -833,6 +845,20 @@ static inline u32_t ticker_job_insert(struct ticker_instance *instance,
 			ticker->ticks_to_expire += ticker->ticks_periodic +
 						   ticker_remainder_inc(ticker);
 			ticker->lazy_current++;
+
+			/* Remove any accumulated drift (possibly added due to
+			 * ticker job execution latencies).
+			 */
+			if (ticker->ticks_to_expire >
+			    ticker->ticks_to_expire_minus) {
+				ticker->ticks_to_expire -=
+					ticker->ticks_to_expire_minus;
+				ticker->ticks_to_expire_minus = 0U;
+			} else {
+				ticker->ticks_to_expire_minus -=
+					ticker->ticks_to_expire;
+				ticker->ticks_to_expire = 0U;
+			}
 		} else {
 			return TICKER_STATUS_FAILURE;
 		}
@@ -881,7 +907,7 @@ static inline void ticker_job_list_insert(struct ticker_instance *instance,
 				user_op = &user_ops[user_ops_first];
 				first = user_ops_first + 1;
 				if (first == user->count_user_op) {
-					first = 0;
+					first = 0U;
 				}
 				user_ops_first = first;
 
@@ -960,7 +986,7 @@ static inline void ticker_job_list_inquire(struct ticker_instance *instance)
 
 			first = user->first + 1;
 			if (first == user->count_user_op) {
-				first = 0;
+				first = 0U;
 			}
 			user->first = first;
 		}
@@ -979,7 +1005,7 @@ static inline void ticker_job_compare_update(struct ticker_instance *instance,
 
 	if (instance->ticker_id_head == TICKER_NULL) {
 		if (cntr_stop() == 0) {
-			instance->ticks_slot_previous = 0;
+			instance->ticks_slot_previous = 0U;
 		}
 
 		return;
@@ -1003,7 +1029,7 @@ static inline void ticker_job_compare_update(struct ticker_instance *instance,
 	 * the operation is pre-empted and current h/w counter runs
 	 * ahead of compare value to be set.
 	 */
-	i = 10;
+	i = 10U;
 	do {
 		u32_t ticks_elapsed;
 
@@ -1013,20 +1039,22 @@ static inline void ticker_job_compare_update(struct ticker_instance *instance,
 		ctr = cntr_cnt_get();
 		cc = instance->ticks_current;
 		ticks_elapsed = ticker_ticks_diff_get(ctr, cc) +
-				COUNTER_CMP_OFFSET_MIN;
-		cc += ((ticks_elapsed < ticks_to_expire) ?
-		       ticks_to_expire : ticks_elapsed);
-		cc &= 0x00FFFFFF;
+				HAL_TICKER_CNTR_CMP_OFFSET_MIN +
+				HAL_TICKER_CNTR_SET_LATENCY;
+		cc += max(ticks_elapsed, ticks_to_expire);
+		cc &= HAL_TICKER_CNTR_MASK;
 
-		instance->fp_cmp_set(cc);
+		instance->trigger_set_cb(cc);
 
 		ctr_post = cntr_cnt_get();
 	} while ((ticker_ticks_diff_get(ctr_post, ctr) +
-		  COUNTER_CMP_OFFSET_MIN) > ticker_ticks_diff_get(cc, ctr));
+		  HAL_TICKER_CNTR_CMP_OFFSET_MIN) >
+		  ticker_ticks_diff_get(cc, ctr));
 }
 
-static inline void ticker_job(struct ticker_instance *instance)
+void ticker_job(void *param)
 {
+	struct ticker_instance *instance = param;
 	u8_t ticker_id_old_head;
 	u8_t insert_head;
 	u32_t ticks_elapsed;
@@ -1043,7 +1071,7 @@ static inline void ticker_job(struct ticker_instance *instance)
 
 		return;
 	}
-	instance->job_guard = 1;
+	instance->job_guard = 1U;
 
 	/* Back up the previous known tick */
 	ticks_previous = instance->ticks_current;
@@ -1054,7 +1082,7 @@ static inline void ticker_job(struct ticker_instance *instance)
 
 		first = instance->ticks_elapsed_first + 1;
 		if (first == DOUBLE_BUFFER_SIZE) {
-			first = 0;
+			first = 0U;
 		}
 		instance->ticks_elapsed_first = first;
 
@@ -1062,20 +1090,20 @@ static inline void ticker_job(struct ticker_instance *instance)
 		    instance->ticks_elapsed[instance->ticks_elapsed_first];
 
 		instance->ticks_current += ticks_elapsed;
-		instance->ticks_current &= 0x00FFFFFF;
+		instance->ticks_current &= HAL_TICKER_CNTR_MASK;
 
-		flag_elapsed = 1;
+		flag_elapsed = 1U;
 	} else {
 		/* No elapsed value in queue */
-		flag_elapsed = 0;
-		ticks_elapsed = 0;
+		flag_elapsed = 0U;
+		ticks_elapsed = 0U;
 	}
 
 	/* Initialise internal re-insert list */
 	insert_head = TICKER_NULL;
 
 	/* Initialise flag used to update next compare value */
-	flag_compare_update = 0;
+	flag_compare_update = 0U;
 
 	/* Remember the old head, so as to decide if new compare needs to be
 	 * set.
@@ -1087,7 +1115,7 @@ static inline void ticker_job(struct ticker_instance *instance)
 
 	/* Detect change in head of the list */
 	if (instance->ticker_id_head != ticker_id_old_head) {
-		flag_compare_update = 1;
+		flag_compare_update = 1U;
 	}
 
 	/* Handle expired tickers */
@@ -1097,7 +1125,7 @@ static inline void ticker_job(struct ticker_instance *instance)
 
 		/* detect change in head of the list */
 		if (instance->ticker_id_head != ticker_id_old_head) {
-			flag_compare_update = 1;
+			flag_compare_update = 1U;
 		}
 	}
 
@@ -1106,7 +1134,7 @@ static inline void ticker_job(struct ticker_instance *instance)
 
 	/* detect change in head of the list */
 	if (instance->ticker_id_head != ticker_id_old_head) {
-		flag_compare_update = 1;
+		flag_compare_update = 1U;
 	}
 
 	/* Processing any list inquiries */
@@ -1116,7 +1144,7 @@ static inline void ticker_job(struct ticker_instance *instance)
 	}
 
 	/* Permit worker job to run */
-	instance->job_guard = 0;
+	instance->job_guard = 0U;
 
 	/* update compare if head changed */
 	if (flag_compare_update) {
@@ -1125,327 +1153,21 @@ static inline void ticker_job(struct ticker_instance *instance)
 
 	/* trigger worker if deferred */
 	if (instance->worker_trigger) {
-		instance->fp_sched(CALL_ID_JOB, CALL_ID_WORKER, 1);
+		instance->sched_cb(TICKER_CALL_ID_JOB, TICKER_CALL_ID_WORKER, 1,
+				   instance);
 	}
 
 	DEBUG_TICKER_JOB(0);
 }
 
 /*****************************************************************************
- * Instances Helpers
- *
- * TODO: decouple it from using work/mayfly in this file and dynamically
- *       import it.
- ****************************************************************************/
-#include "util/mayfly.h"
-
-static u8_t ticker_instance0_caller_id_get(u8_t user_id)
-{
-	switch (user_id) {
-	case MAYFLY_CALL_ID_0:
-		return CALL_ID_WORKER;
-
-	case MAYFLY_CALL_ID_1:
-		return CALL_ID_JOB;
-
-	case MAYFLY_CALL_ID_PROGRAM:
-		return CALL_ID_USER;
-
-	case MAYFLY_CALL_ID_2:
-	default:
-		LL_ASSERT(0);
-		break;
-	}
-
-	return 0;
-}
-
-static u8_t ticker_instance1_caller_id_get(u8_t user_id)
-{
-	switch (user_id) {
-	case MAYFLY_CALL_ID_2:
-		return CALL_ID_JOB;
-
-	case MAYFLY_CALL_ID_PROGRAM:
-		return CALL_ID_USER;
-
-	case MAYFLY_CALL_ID_0:
-	case MAYFLY_CALL_ID_1:
-	default:
-		LL_ASSERT(0);
-		break;
-	}
-
-	return 0;
-}
-
-static void ticker_instance0_sched(u8_t caller_id, u8_t callee_id, u8_t chain)
-{
-	/* return value not checked as we allow multiple calls to schedule
-	 * before being actually needing the work to complete before new
-	 * schedule.
-	 */
-	switch (caller_id) {
-	case CALL_ID_TRIGGER:
-		switch (callee_id) {
-		case CALL_ID_WORKER:
-		{
-			static void *link[2];
-			static struct mayfly m = {
-				0, 0, link,
-				&_instance[0],
-				(void *)ticker_worker
-			};
-
-			mayfly_enqueue(MAYFLY_CALL_ID_0,
-				       MAYFLY_CALL_ID_0,
-				       chain,
-				       &m);
-		}
-		break;
-
-		default:
-			LL_ASSERT(0);
-			break;
-		}
-		break;
-
-	case CALL_ID_WORKER:
-		switch (callee_id) {
-		case CALL_ID_JOB:
-		{
-			static void *link[2];
-			static struct mayfly m = {
-				0, 0, link,
-				(void *)&_instance[0],
-				(void *)ticker_job
-			};
-
-			mayfly_enqueue(MAYFLY_CALL_ID_0,
-				       MAYFLY_CALL_ID_1,
-				       chain,
-				       &m);
-		}
-		break;
-
-		default:
-			LL_ASSERT(0);
-			break;
-		}
-		break;
-
-	case CALL_ID_JOB:
-		switch (callee_id) {
-		case CALL_ID_WORKER:
-		{
-			static void *link[2];
-			static struct mayfly m = {
-				0, 0, link,
-				(void *)&_instance[0],
-				(void *)ticker_worker
-			};
-
-			mayfly_enqueue(MAYFLY_CALL_ID_1,
-				       MAYFLY_CALL_ID_0,
-				       chain,
-				       &m);
-		}
-		break;
-
-		case CALL_ID_JOB:
-		{
-			static void *link[2];
-			static struct mayfly m = {
-				0, 0, link,
-				(void *)&_instance[0],
-				(void *)ticker_job
-			};
-
-			mayfly_enqueue(MAYFLY_CALL_ID_1,
-				       MAYFLY_CALL_ID_1,
-				       chain,
-				       &m);
-		}
-		break;
-
-		default:
-			LL_ASSERT(0);
-			break;
-		}
-		break;
-
-	case CALL_ID_USER:
-		switch (callee_id) {
-		case CALL_ID_JOB:
-		{
-			static void *link[2];
-			static struct mayfly m = {
-				0, 0, link,
-				(void *)&_instance[0],
-				(void *)ticker_job
-			};
-
-			/* TODO: scheduler lock, if OS used */
-			mayfly_enqueue(MAYFLY_CALL_ID_PROGRAM,
-				       MAYFLY_CALL_ID_1,
-				       chain,
-				       &m);
-		}
-		break;
-
-		default:
-			LL_ASSERT(0);
-			break;
-		}
-		break;
-
-	default:
-		LL_ASSERT(0);
-		break;
-	}
-}
-
-static void ticker_instance1_sched(u8_t caller_id, u8_t callee_id, u8_t chain)
-{
-	/* return value not checked as we allow multiple calls to schedule
-	 * before being actually needing the work to complete before new
-	 * schedule.
-	 */
-	switch (caller_id) {
-	case CALL_ID_TRIGGER:
-		switch (callee_id) {
-		case CALL_ID_WORKER:
-		{
-			static void *link[2];
-			static struct mayfly m = {
-				0, 0, link,
-				&_instance[1],
-				(void *)ticker_worker
-			};
-
-			mayfly_enqueue(MAYFLY_CALL_ID_0,
-				       MAYFLY_CALL_ID_2,
-				       chain,
-				       &m);
-		}
-		break;
-
-		default:
-			LL_ASSERT(0);
-			break;
-		}
-		break;
-
-	case CALL_ID_WORKER:
-		switch (callee_id) {
-		case CALL_ID_JOB:
-		{
-			static void *link[2];
-			static struct mayfly m = {
-				0, 0, link,
-				(void *)&_instance[1],
-				(void *)ticker_job
-			};
-
-			mayfly_enqueue(MAYFLY_CALL_ID_2,
-				       MAYFLY_CALL_ID_2,
-				       chain,
-				       &m);
-		}
-		break;
-
-		default:
-			LL_ASSERT(0);
-			break;
-		}
-		break;
-
-	case CALL_ID_JOB:
-		switch (callee_id) {
-		case CALL_ID_WORKER:
-		{
-			static void *link[2];
-			static struct mayfly m = {
-				0, 0, link,
-				(void *)&_instance[1],
-				(void *)ticker_worker
-			};
-
-			mayfly_enqueue(MAYFLY_CALL_ID_2,
-				       MAYFLY_CALL_ID_2,
-				       chain,
-				       &m);
-		}
-		break;
-
-		case CALL_ID_JOB:
-		{
-			static void *link[2];
-			static struct mayfly m = {
-				0, 0, link,
-				(void *)&_instance[1],
-				(void *)ticker_job
-			};
-
-			mayfly_enqueue(MAYFLY_CALL_ID_2,
-				       MAYFLY_CALL_ID_2,
-				       chain,
-				       &m);
-		}
-		break;
-
-		default:
-			LL_ASSERT(0);
-			break;
-		}
-		break;
-
-	case CALL_ID_USER:
-		switch (callee_id) {
-		case CALL_ID_JOB:
-		{
-			static void *link[2];
-			static struct mayfly m = {
-				0, 0, link,
-				(void *)&_instance[1],
-				(void *)ticker_job
-			};
-
-			/* TODO: scheduler lock, if OS used */
-			mayfly_enqueue(MAYFLY_CALL_ID_PROGRAM,
-				       MAYFLY_CALL_ID_2,
-				       chain,
-				       &m);
-		}
-		break;
-
-		default:
-			LL_ASSERT(0);
-			break;
-		}
-		break;
-
-	default:
-		LL_ASSERT(0);
-		break;
-	}
-}
-
-static void ticker_instance0_cmp_set(u32_t value)
-{
-	cntr_cmp_set(0, value);
-}
-
-static void ticker_instance1_cmp_set(u32_t value)
-{
-	cntr_cmp_set(1, value);
-}
-
-/*****************************************************************************
  * Public Interface
  ****************************************************************************/
 u32_t ticker_init(u8_t instance_index, u8_t count_node, void *node,
-		  u8_t count_user, void *user, u8_t count_op, void *user_op)
+		  u8_t count_user, void *user, u8_t count_op, void *user_op,
+		  ticker_caller_id_get_cb_t caller_id_get_cb,
+		  ticker_sched_cb_t sched_cb,
+		  ticker_trigger_set_cb_t trigger_set_cb)
 {
 	struct ticker_instance *instance = &_instance[instance_index];
 	struct ticker_user_op *user_op_ = (void *)user_op;
@@ -1453,24 +1175,8 @@ u32_t ticker_init(u8_t instance_index, u8_t count_node, void *node,
 
 	if ((sizeof(struct ticker_node) != TICKER_NODE_T_SIZE) ||
 	    (sizeof(struct ticker_user) != TICKER_USER_T_SIZE) ||
-	    (sizeof(struct ticker_user_op) != TICKER_USER_OP_T_SIZE)) {
-		return TICKER_STATUS_FAILURE;
-	}
-
-	switch (instance_index) {
-	case 0:
-		instance->fp_caller_id_get = ticker_instance0_caller_id_get;
-		instance->fp_sched = ticker_instance0_sched;
-		instance->fp_cmp_set = ticker_instance0_cmp_set;
-		break;
-
-	case 1:
-		instance->fp_caller_id_get = ticker_instance1_caller_id_get;
-		instance->fp_sched = ticker_instance1_sched;
-		instance->fp_cmp_set = ticker_instance1_cmp_set;
-		break;
-
-	default:
+	    (sizeof(struct ticker_user_op) != TICKER_USER_OP_T_SIZE) ||
+	    (instance_index >= TICKER_INSTANCE_MAX)) {
 		return TICKER_STATUS_FAILURE;
 	}
 
@@ -1493,12 +1199,16 @@ u32_t ticker_init(u8_t instance_index, u8_t count_node, void *node,
 		return TICKER_STATUS_FAILURE;
 	}
 
+	instance->caller_id_get_cb = caller_id_get_cb;
+	instance->sched_cb = sched_cb;
+	instance->trigger_set_cb = trigger_set_cb;
+
 	instance->ticker_id_head = TICKER_NULL;
 	instance->ticker_id_slot_previous = TICKER_NULL;
-	instance->ticks_slot_previous = 0;
-	instance->ticks_current = 0;
-	instance->ticks_elapsed_first = 0;
-	instance->ticks_elapsed_last = 0;
+	instance->ticks_slot_previous = 0U;
+	instance->ticks_current = 0U;
+	instance->ticks_elapsed_first = 0U;
+	instance->ticks_elapsed_last = 0U;
 
 	return TICKER_STATUS_SUCCESS;
 }
@@ -1510,11 +1220,14 @@ bool ticker_is_initialized(u8_t instance_index)
 
 void ticker_trigger(u8_t instance_index)
 {
+	struct ticker_instance *instance;
+
 	DEBUG_TICKER_ISR(1);
 
-	if (_instance[instance_index].fp_sched) {
-		_instance[instance_index].fp_sched(CALL_ID_TRIGGER,
-						   CALL_ID_WORKER, 1);
+	instance = &_instance[instance_index];
+	if (instance->sched_cb) {
+		instance->sched_cb(TICKER_CALL_ID_TRIGGER,
+				   TICKER_CALL_ID_WORKER, 1, instance);
 	}
 
 	DEBUG_TICKER_ISR(0);
@@ -1522,8 +1235,8 @@ void ticker_trigger(u8_t instance_index)
 
 u32_t ticker_start(u8_t instance_index, u8_t user_id, u8_t ticker_id,
 		   u32_t ticks_anchor, u32_t ticks_first, u32_t ticks_periodic,
-		   u32_t remainder_periodic, u16_t lazy, u16_t ticks_slot,
-		   ticker_timeout_func ticker_timeout_func, void *context,
+		   u32_t remainder_periodic, u16_t lazy, u32_t ticks_slot,
+		   ticker_timeout_func fp_timeout_func, void *context,
 		   ticker_op_func fp_op_func, void *op_context)
 {
 	struct ticker_instance *instance = &_instance[instance_index];
@@ -1535,7 +1248,7 @@ u32_t ticker_start(u8_t instance_index, u8_t user_id, u8_t ticker_id,
 
 	last = user->last + 1;
 	if (last >= user->count_user_op) {
-		last = 0;
+		last = 0U;
 	}
 
 	if (last == user->first) {
@@ -1551,7 +1264,7 @@ u32_t ticker_start(u8_t instance_index, u8_t user_id, u8_t ticker_id,
 	user_op->params.start.remainder_periodic = remainder_periodic;
 	user_op->params.start.ticks_slot = ticks_slot;
 	user_op->params.start.lazy = lazy;
-	user_op->params.start.fp_timeout_func = ticker_timeout_func;
+	user_op->params.start.fp_timeout_func = fp_timeout_func;
 	user_op->params.start.context = context;
 	user_op->status = TICKER_STATUS_BUSY;
 	user_op->fp_op_func = fp_op_func;
@@ -1559,14 +1272,15 @@ u32_t ticker_start(u8_t instance_index, u8_t user_id, u8_t ticker_id,
 
 	user->last = last;
 
-	instance->fp_sched(instance->fp_caller_id_get(user_id), CALL_ID_JOB, 0);
+	instance->sched_cb(instance->caller_id_get_cb(user_id),
+			   TICKER_CALL_ID_JOB, 0, instance);
 
 	return user_op->status;
 }
 
 u32_t ticker_update(u8_t instance_index, u8_t user_id, u8_t ticker_id,
-		    u16_t ticks_drift_plus, u16_t ticks_drift_minus,
-		    u16_t ticks_slot_plus, u16_t ticks_slot_minus, u16_t lazy,
+		    u32_t ticks_drift_plus, u32_t ticks_drift_minus,
+		    u32_t ticks_slot_plus, u32_t ticks_slot_minus, u16_t lazy,
 		    u8_t force, ticker_op_func fp_op_func, void *op_context)
 {
 	struct ticker_instance *instance = &_instance[instance_index];
@@ -1578,7 +1292,7 @@ u32_t ticker_update(u8_t instance_index, u8_t user_id, u8_t ticker_id,
 
 	last = user->last + 1;
 	if (last >= user->count_user_op) {
-		last = 0;
+		last = 0U;
 	}
 
 	if (last == user->first) {
@@ -1600,7 +1314,8 @@ u32_t ticker_update(u8_t instance_index, u8_t user_id, u8_t ticker_id,
 
 	user->last = last;
 
-	instance->fp_sched(instance->fp_caller_id_get(user_id), CALL_ID_JOB, 0);
+	instance->sched_cb(instance->caller_id_get_cb(user_id),
+			   TICKER_CALL_ID_JOB, 0, instance);
 
 	return user_op->status;
 }
@@ -1617,7 +1332,7 @@ u32_t ticker_stop(u8_t instance_index, u8_t user_id, u8_t ticker_id,
 
 	last = user->last + 1;
 	if (last >= user->count_user_op) {
-		last = 0;
+		last = 0U;
 	}
 
 	if (last == user->first) {
@@ -1633,7 +1348,8 @@ u32_t ticker_stop(u8_t instance_index, u8_t user_id, u8_t ticker_id,
 
 	user->last = last;
 
-	instance->fp_sched(instance->fp_caller_id_get(user_id), CALL_ID_JOB, 0);
+	instance->sched_cb(instance->caller_id_get_cb(user_id),
+			   TICKER_CALL_ID_JOB, 0, instance);
 
 	return user_op->status;
 }
@@ -1651,7 +1367,7 @@ u32_t ticker_next_slot_get(u8_t instance_index, u8_t user_id, u8_t *ticker_id,
 
 	last = user->last + 1;
 	if (last >= user->count_user_op) {
-		last = 0;
+		last = 0U;
 	}
 
 	if (last == user->first) {
@@ -1670,7 +1386,8 @@ u32_t ticker_next_slot_get(u8_t instance_index, u8_t user_id, u8_t *ticker_id,
 
 	user->last = last;
 
-	instance->fp_sched(instance->fp_caller_id_get(user_id), CALL_ID_JOB, 0);
+	instance->sched_cb(instance->caller_id_get_cb(user_id),
+			   TICKER_CALL_ID_JOB, 0, instance);
 
 	return user_op->status;
 }
@@ -1687,7 +1404,7 @@ u32_t ticker_job_idle_get(u8_t instance_index, u8_t user_id,
 
 	last = user->last + 1;
 	if (last >= user->count_user_op) {
-		last = 0;
+		last = 0U;
 	}
 
 	if (last == user->first) {
@@ -1703,7 +1420,8 @@ u32_t ticker_job_idle_get(u8_t instance_index, u8_t user_id,
 
 	user->last = last;
 
-	instance->fp_sched(instance->fp_caller_id_get(user_id), CALL_ID_JOB, 0);
+	instance->sched_cb(instance->caller_id_get_cb(user_id),
+			   TICKER_CALL_ID_JOB, 0, instance);
 
 	return user_op->status;
 }
@@ -1712,7 +1430,8 @@ void ticker_job_sched(u8_t instance_index, u8_t user_id)
 {
 	struct ticker_instance *instance = &_instance[instance_index];
 
-	instance->fp_sched(instance->fp_caller_id_get(user_id), CALL_ID_JOB, 0);
+	instance->sched_cb(instance->caller_id_get_cb(user_id),
+			   TICKER_CALL_ID_JOB, 0, instance);
 }
 
 u32_t ticker_ticks_now_get(void)
@@ -1722,5 +1441,5 @@ u32_t ticker_ticks_now_get(void)
 
 u32_t ticker_ticks_diff_get(u32_t ticks_now, u32_t ticks_old)
 {
-	return ((ticks_now - ticks_old) & 0x00FFFFFF);
+	return ((ticks_now - ticks_old) & HAL_TICKER_CNTR_MASK);
 }

@@ -15,17 +15,17 @@ some highlights of the Nucleo L432KC board:
 - On-board ST-LINK/V2-1 debugger/programmer with SWD connector
 - Flexible board power supply:
 
-       - USB VBUS or external source(3.3V, 5V, 7 - 12V)
-       - Power management access point
+  - USB VBUS or external source(3.3V, 5V, 7 - 12V)
+  - Power management access point
 
-- Three LEDs: USB communication (LD1), user LED (LD2), power LED (LD3)
+- Three LEDs: USB communication (LD1), power LED (LD2), user LED (LD3)
 - One push-button: RESET
 
 .. image:: img/nucleo32_ulp_logo.jpg
-     :width: 250px
-     :align: center
-     :height: 188px
-     :alt: Nucleo L432KC
+  :width: 250px
+  :align: center
+  :height: 188px
+  :alt: Nucleo L432KC
 
 More information about the board can be found at the `Nucleo L432KC website`_.
 
@@ -40,49 +40,49 @@ The STM32L432KC SoC provides the following hardware IPs:
   100DMIPS/1.25DMIPS/MHz (Dhrystone 2.1)
 - Clock Sources:
 
-        - 32 kHz crystal oscillator for RTC (LSE)
-        - Internal 16 MHz factory-trimmed RC ( |plusminus| 1%)
-        - Internal low-power 32 kHz RC ( |plusminus| 5%)
-        - Internal multispeed 100 kHz to 48 MHz oscillator, auto-trimmed by
-          LSE (better than |plusminus| 0.25 % accuracy)
-        - 2 PLLs for system clock, USB, audio, ADC
+  - 32 kHz crystal oscillator for RTC (LSE)
+  - Internal 16 MHz factory-trimmed RC ( |plusminus| 1%)
+  - Internal low-power 32 kHz RC ( |plusminus| 5%)
+  - Internal multispeed 100 kHz to 48 MHz oscillator, auto-trimmed by
+    LSE (better than |plusminus| 0.25 % accuracy)
+  - 2 PLLs for system clock, USB, audio, ADC
 
 - RTC with HW calendar, alarms and calibration
 - Up to 3 capacitive sensing channels: support touchkey, linear and rotary touch sensors
 - 11x timers:
 
-        - 1x 16-bit advanced motor-control
-        - 1x 32-bit and 2x 16-bit general purpose
-        - 2x 16-bit basic
-        - 2x low-power 16-bit timers (available in Stop mode)
-        - 2x watchdogs
-        - SysTick timer
+  - 1x 16-bit advanced motor-control
+  - 1x 32-bit and 2x 16-bit general purpose
+  - 2x 16-bit basic
+  - 2x low-power 16-bit timers (available in Stop mode)
+  - 2x watchdogs
+  - SysTick timer
 
 - Up to 26 fast I/Os, most 5 V-tolerant
 - Memories
 
-        - Up to 256 KB single bank Flash, proprietary code readout protection
-        - Up to 64 KB of SRAM including 16 KB with hardware parity check
-        - Quad SPI memory interface
+  - Up to 256 KB single bank Flash, proprietary code readout protection
+  - Up to 64 KB of SRAM including 16 KB with hardware parity check
+  - Quad SPI memory interface
 
 - Rich analog peripherals (independent supply)
 
-        - 1x 12-bit ADC 5 MSPS, up to 16-bit with hardware oversampling, 200
-          |micro| A/MSPS
-        - 2x 12-bit DAC, low-power sample and hold
-        - 1x operational amplifiers with built-in PGA
-        - 2x ultra-low-power comparators
+  - 1x 12-bit ADC 5 MSPS, up to 16-bit with hardware oversampling, 200
+    |micro| A/MSPS
+  - 2x 12-bit DAC, low-power sample and hold
+  - 1x operational amplifiers with built-in PGA
+  - 2x ultra-low-power comparators
 
 - 13x communication interfaces
 
-        - USB OTG 2.0 full-speed crystal less solution with LPM and BCD
-        - 1x SAIs (serial audio interface)
-        - 2x I2C FM+(1 Mbit/s), SMBus/PMBus
-        - 3x USARTs (ISO 7816, LIN, IrDA, modem)
-        - 2x SPIs (3x SPIs with the Quad SPI)
-        - CAN (2.0B Active)
-        - SWPMI single wire protocol master I/F
-        - IRTIM (Infrared interface)
+  - USB OTG 2.0 full-speed crystal less solution with LPM and BCD
+  - 1x SAIs (serial audio interface)
+  - 2x I2C FM+(1 Mbit/s), SMBus/PMBus
+  - 3x USARTs (ISO 7816, LIN, IrDA, modem)
+  - 2x SPIs (3x SPIs with the Quad SPI)
+  - CAN (2.0B Active)
+  - SWPMI single wire protocol master I/F
+  - IRTIM (Infrared interface)
 
 - 14-channel DMA controller
 - True random number generator
@@ -91,8 +91,9 @@ The STM32L432KC SoC provides the following hardware IPs:
 
 
 More information about STM32L432KC can be found here:
-       - `STM32L432KC on www.st.com`_
-       - `STM32L432 reference manual`_
+
+- `STM32L432KC on www.st.com`_
+- `STM32L432 reference manual`_
 
 Supported Features
 ==================
@@ -115,12 +116,15 @@ The Zephyr nucleo_l432kc board configuration supports the following hardware fea
 +-----------+------------+-------------------------------------+
 | PWM       | on-chip    | pwm                                 |
 +-----------+------------+-------------------------------------+
+| CAN       | on-chip    | can                                 |
++-----------+------------+-------------------------------------+
+
+.. note:: CAN feature requires CAN transceiver
 
 Other hardware features are not yet supported on this Zephyr port.
 
 The default configuration can be found in the defconfig file:
-
-	``boards/arm/nucleo_l432kc/nucleo_l432kc_defconfig``
+``boards/arm/nucleo_l432kc/nucleo_l432kc_defconfig``
 
 
 Connections and IOs
@@ -132,10 +136,10 @@ input/output, pull-up, etc.
 Available pins:
 ---------------
 .. image:: img/nucleo_l432kc_arduino_nano.png
-     :width: 960px
-     :align: center
-     :height: 720px
-     :alt: Nucleo L432KC Arduino connectors
+   :width: 960px
+   :align: center
+   :height: 720px
+   :alt: Nucleo L432KC Arduino connectors
 
 For mode details please refer to `STM32 Nucleo-32 board User Manual`_.
 
@@ -168,50 +172,36 @@ Default settings are 115200 8N1.
 Programming and Debugging
 *************************
 
+Applications for the ``nucleo_l432kc`` board configuration can be built and
+flashed in the usual way (see :ref:`build_an_application` and
+:ref:`application_run` for more details).
+
 Flashing
 ========
 
-Nucleo L432KC board includes an ST-LINK/V2-1 embedded debug tool interface.
-This interface is not supported by the openocd version 0.9 included by the Zephyr SDK v0.9.
-Until we update the Zephyr SDK, use openocd v0.10.0 from the openocd-stm32 project on GitHub
-to get the minimum set of scripts needed to flash and debug STM32 development boards.
-
-.. code-block:: console
-
-   $ git clone  https://github.com/erwango/openocd-stm32.git
-
-Then follow instructions in README.md
-
+Nucleo L432KC board includes an ST-LINK/V2-1 embedded debug tool
+interface.  This interface is supported by the openocd version
+included in the Zephyr SDK since v0.9.2.
 
 Flashing an application to Nucleo L432KC
 ----------------------------------------
 
-The sample application :ref:`hello_world` is being used in this tutorial:
-
-To build the Zephyr kernel and application, enter:
-
-.. code-block:: console
-
-   $ cd <zephyr_root_path>
-   $ source zephyr-env.sh
-   $ cd $ZEPHYR_BASE/samples/hello_world/
-   $ make BOARD=nucleo_l432kc
-
-Connect the Nucleo L432KC to your host computer using the USB port.
-Then, enter the following command:
-
-.. code-block:: console
-
-   $ cd <openocd-stm32_path>
-   $ stm32_flsh l4 $ZEPHYR_BASE/samples/hello_world/outdir/nucleo_l432kc/zephyr.bin
-
-Run a serial host program to connect with your Nucleo board.
+Connect the Nucleo L432KC to your host computer using the USB port,
+then run a serial host program to connect with your Nucleo board.
 
 .. code-block:: console
 
    $ minicom -D /dev/ttyACM0
 
-You should see the following message:
+Now build and flash an application. Here is an example for
+:ref:`hello_world`.
+
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: nucleo_l432kc
+   :goals: build flash
+
+You should see the following message on the console:
 
 .. code-block:: console
 
@@ -221,12 +211,14 @@ You should see the following message:
 Debugging
 =========
 
-Access gdb with the following make command:
+You can debug an application in the usual way.  Here is an example for the
+:ref:`hello_world` application.
 
-.. code-block:: console
-
-   $ cd <openocd-stm32_path>
-   $ stm32_dbg l4 $ZEPHYR_BASE/samples/hello_world/outdir/nucleo_l432kc/zephyr.elf
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: nucleo_l432kc
+   :maybe-skip-config:
+   :goals: debug
 
 .. _Nucleo L432KC website:
    http://www.st.com/en/evaluation-tools/nucleo-l432kc.html

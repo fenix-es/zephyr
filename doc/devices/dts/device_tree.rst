@@ -1,10 +1,10 @@
 .. _device-tree:
 
-Device Tree in Zephyr
-########################
+Device Tree
+###########
 
-Introduction to Device Tree
-***************************
+Introduction
+************
 
 Device tree is a way of describing hardware and configuration information
 for boards.  Device tree was adopted for use in the Linux kernel for the
@@ -28,9 +28,9 @@ Information about the system is extracted from the compiled DTS and used to
 create the application image.
 
 Device tree uses a specific format to describe the device nodes in a system.
-This format is described in `EPAPR document`_.
+This format is described in the `Device Tree Specification`_.
 
-.. _EPAPR document: http://www.devicetree.org/specifications-pdf
+.. _Device Tree Specification: https://github.com/devicetree-org/devicetree-specification/releases
 
 More device tree information can be found at the `device tree repository`_.
 
@@ -57,14 +57,9 @@ information is intended to augment the device tree descriptions.  The main
 reason for this is to leverage existing device tree files that a SoC vendor may
 already have defined for a given platform.
 
-Today, configuration in Zephyr comes from a number of different places.  It can
-come from Kconfig files, CMSIS header files, vendor header files, prj.conf
-files, and other miscellaneous sources.  The intent of using device tree is to
-replace or curtail the use of Kconfig files throughout the system, and instead
-use device tree files to describe the configuration of device nodes.  CMSIS and
-vendor header files can be used in conjunction with the device tree to fully
-describe hardware.  Device tree is not intended to replace CMSIS or vendor
-include files.
+Device Tree provides a unified description of a hardware system used in an
+application. It is used in Zephyr to describe hardware and provide a boot-time
+configuration of this hardware.
 
 The device tree files are compiled using the device tree compiler.  The compiler
 runs the .dts file through the C preprocessor to resolve any macro or #defines
@@ -76,10 +71,67 @@ information is placed in a header file that is used by the rest of the code as
 the project is compiled.
 
 A temporary fixup file is required for device tree support on most devices.
-This .fixup file resides in the dts architecture directory and has the same
-name as the master .dts file.  The only difference is the suffix is .fixup.
-This fixup file maps the generated include information to the current
-driver/source usage.
+This fixup file by default resides in the board directory and is named
+dts_fixup.h.  This fixup file maps the generated include information to the
+current driver/source usage.
+
+.. _dt_vs_kconfig:
+
+Device Tree vs Kconfig
+**********************
+
+As mentioned above there are several tools used to configure the build with
+Zephyr.
+The two main ones, Device Tree and Kconfig, might seem to overlap in purpose,
+but in fact they do not. This section serves as a reference to help you decide
+whether to place configuration items in Device Tree or Kconfig.
+
+The scope of each configuration tool can be summarized as follows:
+
+* Device Tree is used to describe the **hardware** and its **boot-time
+  configuration**.
+* Kconfig is used to describe which **software features** will be built into
+  the final image, and their **configuration**.
+
+Hence Device Tree deals mostly with hardware and Kconfig with software.
+A couple of noteworthy exceptions are:
+
+* Device Tree's ``chosen`` keyword, which allows the user to select a
+  particular instance of a hardware device to be used for a concrete purpose
+  by the software. An example of this is selecting a particular UART for use as
+  the system's console.
+* Device Tree's ``status`` keyword, which allows the user to enable or disable
+  a particular instance of a hardware device in the Device Tree file itself.
+  This takes precedence over Kconfig.
+
+To further clarify this separation, let's use a particular, well-known
+example to illustrate this: serial ports a.k.a. UARTs. Let's consider a
+board containing a SoC with 2 UART instances:
+
+* The fact that the target hardware **contains** 2 UARTs is described with Device
+  Tree. This includes the UART type, its driver compatibility and certain
+  immutable (i.e. not software-configurable) settings such as the base address
+  of the hardware peripheral in memory or its interrupt line.
+* Additionally, **hardware boot-time configuration** is also described with Device
+  Tree. This includes things such as the IRQ priority and boot-time UART
+  baudrate. These may also be modifiable at runtime later, but their boot-time
+  default configuration is described in Device Tree.
+* The fact that the user intends to include **software support** for UART in the
+  build is described in Kconfig. Through the use of Kconfig, users can opt not
+  to include support for this particular hardware item if they don't require it.
+
+Another example is a device with a 2.4GHz, multi-protocol radio supporting
+both the Bluetooth Low Energy and 802.15.4 wireless technologies. In this case:
+
+* Device Tree describes the presence of a radio peripheral compatible with a
+  certain radio driver.
+* Additional hardware boot-time configuration settings may also be present
+  in the Device Tree files. In this particular case it could be a
+  default TX power in dBm if the hardware does have a simple, cross-wireless
+  technology register for that.
+* Kconfig will describe which **protocol stack** is to be used with that radio.
+  The user may decide to select BLE or 802.15.4, which will both depend on
+  the presence of a compatible radio in the Device Tree files.
 
 Device tree file formats
 ************************
@@ -96,12 +148,12 @@ Example: FRDM K64F Board and Hexiwear K64
 Both of these boards are based on the same NXP Kinetis SoC family, the K6X.  The
 following shows the include hierarchy for both boards.
 
-dts/arm/frdm_k64.dts includes the following two files::
+boards/arm/frdm_k64f/frdm_k64f.dts includes the following files::
 
   dts/arm/nxp/nxp_k6x.dtsi
   dts/arm/armv7-m.dtsi
 
-dts/arm/hexiwear_k64.dts includes the same two files::
+boards/arm/hexiwear_k64/hexiwear_k64.dts includes the same files::
 
   dts/arm/nxp/nxp_k6x.dtsi
   dts/arm/armv7-m.dtsi
@@ -114,7 +166,7 @@ Currently supported boards
 **************************
 
 Device tree is currently supported on all ARM targets.  Support for all other
-architectures is to be completed by release 1.9.
+architectures is to be completed by release 1.11.
 
 Adding support for a board
 **************************
@@ -156,10 +208,9 @@ The following is a more precise list of required files:
 
   * Add architecture-specific DTS directory, if not already present.
     Example: dts/arm for ARM.
-  * Add target to dts/<ARCH>/Makefile or create Makefile if not present
   * Add target specific device tree files for base SoC.  These should be
     .dtsi files to be included in the board-specific device tree files.
-  * Add target specific YAML files in the dts/<ARCH>/yaml directory.
+  * Add target specific YAML files in the dts/bindings/ directory.
     Create the yaml directory if not present.
 
 * SoC family support
@@ -175,6 +226,10 @@ The following is a more precise list of required files:
   * Add a board level .dts file that includes the SoC family .dtsi files
     and enables the nodes required for that specific board.
   * Board .dts file should specify the SRAM and FLASH devices, if present.
+
+    * Flash device node might specify flash partitions. For more details see
+      :ref:`flash_partitions`
+
   * Add board-specific YAML files, if required.  This would occur if the
     board has additional hardware that is not covered by the SoC family
     .dtsi/.yaml files.
@@ -184,6 +239,80 @@ The following is a more precise list of required files:
   * Fixup files contain mappings from existing Kconfig options to the actual
     underlying DTS derived configuration #defines.  Fixup files are temporary
     artifacts until additional DTS changes are made to make them unnecessary.
+
+* Overlay Files (optional)
+
+  * Overlay files contain tweaks or changes to the SoC and Board support files
+    described above. They can be used to modify Device Tree configurations
+    without having to change the SoC and Board files. See
+    :ref:`application_dt` for more information on overlay files and the Zephyr
+    build system.
+
+.. _dt-alias-chosen:
+
+``aliases`` and ``chosen`` nodes
+================================
+
+Using an alias with a common name for a particular node makes it easier for you
+to write board-independent source code. Device Tree ``aliases`` nodes  are used
+for this purpose, by mapping certain generic, commonly used names to specific
+hardware resources:
+
+.. code-block:: yaml
+
+   aliases {
+      led0 = &led0;
+      sw0 = &button0;
+      sw1 = &button1;
+      uart-0 = &uart0;
+      uart-1 = &uart1;
+   };
+
+Certain software subsystems require a specific hardware resource to bind to in
+order to function properly. Some of those subsystems are used with many
+different boards, which makes using the Device Tree ``chosen`` nodes very
+convenient. By doing, so the software subsystem can rely on having the specific
+hardware peripheral assigned to it. In the following example we bind the shell
+to ``uart1`` in this board:
+
+.. code-block:: yaml
+
+   chosen {
+      zephyr,shell-uart = &uart1;
+   };
+
+The full set of Zephyr-specific ``chosen`` nodes follows:
+
+.. list-table::
+   :header-rows: 1
+
+   * - ``chosen`` node name
+     - Generated symbol
+
+   * - ``zephyr,flash``
+     - ``CONFIG_FLASH``
+   * - ``zephyr,sram``
+     - ``CONFIG_SRAM``
+   * - ``zephyr,ccm``
+     - ``CONFIG_CCM``
+   * - ``zephyr,console``
+     - :option:`CONFIG_UART_CONSOLE_ON_DEV_NAME`
+   * - ``zephyr,shell-uart``
+     - :option:`CONFIG_UART_SHELL_ON_DEV_NAME`
+   * - ``zephyr,bt-uart``
+     - :option:`CONFIG_BT_UART_ON_DEV_NAME`
+   * - ``zephyr,uart-pipe``
+     - :option:`CONFIG_UART_PIPE_ON_DEV_NAME`
+   * - ``zephyr,bt-mon-uart``
+     - :option:`CONFIG_BT_MONITOR_ON_DEV_NAME`
+   * - ``zephyr,uart-mcumgr``
+     - :option:`CONFIG_UART_MCUMGR_ON_DEV_NAME`
+
+As chosen properties tend to be related to software configuration, it can be
+useful for the build system to know if a chosen property was defined. We
+generate a define for each chosen property, for example:
+
+``zephyr,flash`` will generate: ``#define DT_CHOSEN_ZEPHYR_FLASH 1``
 
 Adding support for device tree in drivers
 *****************************************
@@ -204,24 +333,24 @@ Assuming the current working directory is the ZEPHYR_BASE, the directory
 hierarchy looks like the following::
 
   dts/common/
-  dts/common/yaml
   dts/<ARCH>/
-  dts/<ARCH>/yaml
+  dts/bindings/
+  boards/<ARCH>/<BOARD>/
 
 The common directories contain a skeleton.dtsi include file that defines the
 address and size cells.  The yaml subdirectory contains common yaml files for
 Zephyr-specific nodes/properties and generic device properties common across
 architectures.
 
-Example: DTS/YAML files for NXP FRDM K64F::
+Example: Subset of DTS/YAML files for NXP FRDM K64F (Subject to Change)::
 
   dts/arm/armv7-m.dtsi
   dts/arm/k6x/nxp_k6x.dtsi
-  dts/arm/frdm_k64f.dts
-  dts/arm/yaml/arm,v7m-nvic.yaml
-  dts/arm/yaml/k64gpio.yaml
-  dts/arm/yaml/k64pinmux.yaml
-  dts/arm/yaml/k64uart.yaml
+  boards/arm/frdm_k64f/frdm_k64f.dts
+  dts/bindings/interrupt-controller/arm,v7m-nvic.yaml
+  dts/bindings/gpio/nxp,kinetis-gpio.yaml
+  dts/bindings/pinctrl/nxp,kinetis-pinmux.yaml
+  dts/bindings/serial/nxp,kinetis-uart.yaml
 
 YAML definitions for device nodes
 *********************************
@@ -243,7 +372,7 @@ YAML files reside in a subdirectory inside the common and architecture-specific
 device tree directories.  A YAML template file is provided to show the required
 format.  This file is located at::
 
-  dts/common/yaml/device_node.yaml.template
+  dts/bindings/device_node.yaml.template
 
 YAML files must end in a .yaml suffix.  YAML files are scanned during the
 information extraction phase and are matched to device tree nodes via the

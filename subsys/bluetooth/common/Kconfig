@@ -8,19 +8,38 @@
 
 if BT_HCI
 
+config BT_HCI_VS
+	bool "Zephyr HCI Vendor-Specific Commands"
+	default y
+	help
+	  Enable support for the Zephyr HCI Vendor-Specific Commands in the
+	  Host and/or Controller. This enables Set Version Information,
+	  Supported Commands, Supported Features vendor commands.
+
 config BT_HCI_VS_EXT
 	bool "Zephyr HCI Vendor-Specific Extensions"
+	depends on BT_HCI_VS
 	default y
 	help
 	  Enable support for the Zephyr HCI Vendor-Specific Extensions in the
-	  Host and/or Controller.
+	  Host and/or Controller. This enables  Write BD_ADDR, Read Build Info,
+	  Read Static Addresses and Read Key Hierarchy Roots vendor commands.
+
+config BT_HCI_VS_EXT_DETECT
+	bool "Use heuristics to guess HCI vendor extensions support in advance"
+	depends on BT_HCI_VS_EXT && !BT_CTLR
+	default y if BOARD_QEMU_X86 || BOARD_QEMU_CORTEX_M3 || BOARD_NATIVE_POSIX
+	help
+	  Use some heuristics to try to guess in advance whether the controller
+	  supports the HCI vendor extensions in advance, in order to prevent
+	  sending vendor commands to controller which may interpret them in
+	  completely different ways.
 
 config BT_RPA
 	# Virtual/hidden option
 	bool
 	select TINYCRYPT
 	select TINYCRYPT_AES
-	default n
 
 config BT_DEBUG
 	# Virtual/hidden option to make the conditions more intuitive
@@ -39,8 +58,7 @@ config BT_DEBUG_NONE
 config BT_DEBUG_LOG
 	bool "Normal printf-style to console"
 	select BT_DEBUG
-	select PRINTK
-	select SYS_LOG
+	select LOG
 	help
 	  This option enables Bluetooth debug going to standard
 	  serial console.
@@ -48,7 +66,7 @@ config BT_DEBUG_LOG
 config BT_DEBUG_MONITOR
 	bool "Monitor protocol over UART"
 	select BT_DEBUG
-	select PRINTK
+	select LOG
 	select CONSOLE_HAS_DRIVER
 	help
 	  Use a custom logging protocol over the console UART
@@ -65,13 +83,6 @@ config BT_DEBUG_MONITOR
 endchoice
 
 if BT_DEBUG
-config BT_DEBUG_COLOR
-	bool "Use colored logs"
-	depends on BT_DEBUG_LOG
-	select SYS_LOG_SHOW_COLOR
-	default y
-	help
-	  Use color in the logs. This requires an ANSI capable terminal.
 
 if !HAS_DTS
 config BT_MONITOR_ON_DEV_NAME

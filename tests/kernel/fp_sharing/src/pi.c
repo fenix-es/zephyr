@@ -1,5 +1,3 @@
-/* pi.c - pi computation portion of FPU sharing test */
-
 /*
  * Copyright (c) 2011-2014 Wind River Systems, Inc.
  *
@@ -7,7 +5,9 @@
  */
 
 /*
- * DESCRIPTION
+ * @file
+ * pi computation portion of FPU sharing test
+ *
  * This module is used for the FPU sharing test, and supplements the basic
  * load/store test by incorporating two additional threads that utilize the
  * floating point unit.
@@ -33,7 +33,7 @@
 #include <stdio.h>
 #include <tc_util.h>
 
-#include <float_context.h>
+#include "float_context.h"
 
 /*
  * PI_NUM_ITERATIONS: This macro is defined in the project's Makefile and
@@ -56,7 +56,7 @@ static volatile unsigned int calc_pi_high_count;
  *
  * @brief Entry point for the low priority pi compute task
  *
- * @return N/A
+ * @ingroup kernel_fpsharing_tests
  */
 
 void calculate_pi_low(void)
@@ -74,7 +74,7 @@ void calculate_pi_low(void)
 		pi = 1.0;
 		divisor = 3.0;
 
-		for (ix = 0; ix < PI_NUM_ITERATIONS; ix++) {
+		for (ix = 0U; ix < PI_NUM_ITERATIONS; ix++) {
 			pi += sign / divisor;
 			divisor += 2.0;
 			sign *= -1.0;
@@ -99,7 +99,7 @@ void calculate_pi_low(void)
  *
  * @brief Entry point for the high priority pi compute task
  *
- * @return N/A
+ * @ingroup kernel_fpsharing_tests
  */
 
 void calculate_pi_high(void)
@@ -117,7 +117,7 @@ void calculate_pi_high(void)
 		pi = 1.0;
 		divisor = 3.0;
 
-		for (ix = 0; ix < PI_NUM_ITERATIONS; ix++) {
+		for (ix = 0U; ix < PI_NUM_ITERATIONS; ix++) {
 			pi += sign / divisor;
 			divisor += 2.0;
 			sign *= -1.0;

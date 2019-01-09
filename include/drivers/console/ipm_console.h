@@ -6,12 +6,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef _IPM_CONSOLE_H_
-#define _IPM_CONSOLE_H_
+#ifndef ZEPHYR_INCLUDE_DRIVERS_CONSOLE_IPM_CONSOLE_H_
+#define ZEPHYR_INCLUDE_DRIVERS_CONSOLE_IPM_CONSOLE_H_
 
 #include <kernel.h>
 #include <device.h>
-#include <misc/ring_buffer.h>
+#include <ring_buffer.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -105,4 +105,4 @@ int ipm_console_sender_init(struct device *d);
 }
 #endif
 
-#endif /* _IPM_CONSOLE_H_ */
+#endif /* ZEPHYR_INCLUDE_DRIVERS_CONSOLE_IPM_CONSOLE_H_ */

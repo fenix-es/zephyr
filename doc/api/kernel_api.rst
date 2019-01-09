@@ -14,6 +14,10 @@ as described in the :ref:`kernel`.
    :local:
    :backlinks: top
 
+.. comment
+   not documenting
+   .. doxygengroup:: kernel_apis
+
 Threads
 *******
 
@@ -115,20 +119,20 @@ somewhat akin to Unix-style signals.
 .. doxygengroup:: alert_apis
    :project: Zephyr
 
-Fifos
+FIFOs
 *****
 
-Fifos provide traditional first in, first out (FIFO) queuing of data items
+FIFOs provide traditional first in, first out (FIFO) queuing of data items
 of any size.
 (See :ref:`fifos_v2`.)
 
 .. doxygengroup:: fifo_apis
    :project: Zephyr
 
-Lifos
+LIFOs
 *****
 
-Lifos provide traditional last in, first out (LIFO) queuing of data items
+LIFOs provide traditional last in, first out (LIFO) queuing of data items
 of any size.
 (See :ref:`lifos_v2`.)
 
@@ -143,6 +147,12 @@ data items.
 (See :ref:`stacks_v2`.)
 
 .. doxygengroup:: stack_apis
+   :project: Zephyr
+
+Queues
+******
+
+.. doxygengroup:: queue_apis
    :project: Zephyr
 
 Message Queues
@@ -175,6 +185,12 @@ variable-size chunks of data, in whole or in part.
 .. doxygengroup:: pipe_apis
    :project: Zephyr
 
+Asynchronous Polling
+********************
+
+.. doxygengroup:: poll_apis
+   :project: Zephyr
+
 Interrupt Service Routines (ISRs)
 *********************************
 
@@ -198,6 +214,12 @@ The atomic services enable multiple threads and ISRs to read and modify
 .. doxygengroup:: atomic_apis
    :project: Zephyr
 
+Profiling
+*********
+
+.. doxygengroup:: profiling_apis
+   :project: Zephyr
+
 Floating Point Services
 ***********************
 
@@ -216,6 +238,14 @@ of variable-size data items.
 (See :ref:`ring_buffers_v2`.)
 
 .. doxygengroup:: ring_buffer_apis
+   :project: Zephyr
+   :content-only:
+
+Kernel Version
+**************
+Kernel version handling and APIs related to kernel version being used.
+
+.. doxygengroup:: version_apis
    :project: Zephyr
    :content-only:
 

@@ -72,6 +72,8 @@ The hexiwear_k64 board configuration supports the following hardware features:
 +-----------+------------+-------------------------------------+
 | I2C       | on-chip    | i2c                                 |
 +-----------+------------+-------------------------------------+
+| WATCHDOG  | on-chip    | watchdog                            |
++-----------+------------+-------------------------------------+
 | ADC       | on-chip    | adc                                 |
 +-----------+------------+-------------------------------------+
 | PWM       | on-chip    | pwm                                 |
@@ -157,14 +159,19 @@ serial communication over USB.
 To use the pyOCD tools with OpenSDA, follow the instructions in the
 :ref:`nxp_opensda_pyocd` page using the `DAPLink Hexiwear Firmware`_. The pyOCD
 tools are the default for this board, therefore it is not necessary to set
-``OPENSDA_FW=daplink`` explicitly when you invoke ``make flash`` or ``make
-debug``.
+``OPENSDA_FW=daplink`` explicitly when using the default flash and debug
+mechanisms.
+
+With these mechanisms, applications for the ``hexiwear_k64`` board
+configuration can be built and flashed in the usual way (see
+:ref:`build_an_application` and :ref:`application_run` for more
+details).
 
 To use the Segger J-Link tools with OpenSDA, follow the instructions in the
 :ref:`nxp_opensda_jlink` page using the `Segger J-Link OpenSDA V2.1 Firmware`_.
 The Segger J-Link tools are not the default for this board, therefore it is
-necessary to set ``OPENSDA_FW=jlink`` explicitly when you invoke ``make
-debug``.
+necessary to set ``OPENSDA_FW=jlink`` explicitly in the environment before
+programming and debugging.
 
 .. note::
    The OpenSDA adapter is shared between the K64 and the KW40Z via switches,
@@ -198,16 +205,12 @@ Flashing
 ========
 
 This example uses the :ref:`hello_world` sample with the
-:ref:`nxp_opensda_pyocd` tools. Use the ``make flash`` build target to build
-your Zephyr application, invoke the pyOCD flash tool and program your Zephyr
-application to flash.
+:ref:`nxp_opensda_pyocd` tools.
 
-.. code-block:: console
-
-   $ cd <zephyr_root_path>
-   $ . zephyr-env.sh
-   $ cd samples/hello_world/
-   $ make BOARD=hexiwear_k64 flash
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: hexiwear_k64
+   :goals: flash
 
 Open a serial terminal (minicom, putty, etc.) with the following settings:
 
@@ -226,17 +229,14 @@ the following message:
 Debugging
 =========
 
-This example uses the :ref:`hello_world` sample with the
-:ref:`nxp_opensda_pyocd` tools. Use the ``make debug`` build target to build
-your Zephyr application, invoke the pyOCD GDB server, attach a GDB client, and
-program your Zephyr application to flash. It will leave you at a gdb prompt.
+You can debug an application in the usual way.  Here is an example for the
+:ref:`hello_world` application.
 
-.. code-block:: console
-
-   $ cd <zephyr_root_path>
-   $ . zephyr-env.sh
-   $ cd samples/hello_world/
-   $ make BOARD=hexiwear_k64 debug
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: hexiwear_k64
+   :maybe-skip-config:
+   :goals: debug
 
 Using Bluetooth
 ***************
@@ -257,15 +257,16 @@ host application to the K64.
 
 Peripheral Heart Rate Sensor
 ============================
-Navigate to the Zephyr sample application and build it for the Hexiwear K64.
 
-.. code-block:: console
+Navigate to the Zephyr ``samples/bluetooth/peripheral_hr`` sample
+application, then build and flash it to the Hexiwear K64. Make sure
+the OpenSDA switches on the docking station are configured for the
+K64.
 
-   $ cd samples/bluetooth/peripheral_hr
-   $ make BOARD=hexiwear_k64
-
-Flash the application to the Hexiwear K64. Make sure the OpenSDA switches on
-the docking station are configured for the K64.
+.. zephyr-app-commands::
+   :zephyr-app: samples/bluetooth/peripheral_hr
+   :board: hexiwear_k64
+   :goals: build flash
 
 Reset the KW40Z and the K64 using the push buttons on the docking station.
 
@@ -280,22 +281,22 @@ will then see a plot of the heart rate data that updates once per second.
 
 
 .. _Hexiwear Website:
-   http://www.nxp.com/hexiwear
+   https://www.nxp.com/support/developer-resources/nxp-designs/hexiwear-complete-iot-development-solution:HEXIWEAR?&tid=vanHEXIWEAR
 
 .. _Hexiwear Fact Sheet:
-   http://www.nxp.com/assets/documents/data/en/fact-sheets/HEXIWEAR-FS.pdf
+   https://www.nxp.com/docs/en/fact-sheet/HEXIWEAR-FS.pdf
 
 .. _Hexiwear Schematics:
    http://cdn-docs.mikroe.com/images/c/c0/Sch_Hexiwear_MainBoard_v106c.pdf
 
 .. _K64F Website:
-   http://www.nxp.com/products/microcontrollers-and-processors/arm-processors/kinetis-cortex-m-mcus/k-series-performance-m4/k6x-ethernet/kinetis-k64-120-mhz-256kb-sram-microcontrollers-mcus-based-on-arm-cortex-m4-core:K64_120
+   https://www.nxp.com/products/processors-and-microcontrollers/arm-based-processors-and-mcus/kinetis-cortex-m-mcus/k-seriesperformancem4/k6x-ethernet/kinetis-k64-120-mhz-256kb-sram-microcontrollers-mcus-based-on-arm-cortex-m4-core:K64_120
 
 .. _K64F Datasheet:
-   http://www.nxp.com/assets/documents/data/en/data-sheets/K64P144M120SF5.pdf
+   https://www.nxp.com/docs/en/data-sheet/K64P144M120SF5.pdf
 
 .. _K64F Reference Manual:
-   http://www.nxp.com/assets/documents/data/en/reference-manuals/K64P144M120SF5RM.pdf
+   https://www.nxp.com/docs/en/reference-manual/K64P144M120SF5RM.pdf
 
 .. _DAPLink Hexiwear Firmware:
    https://github.com/MikroElektronika/HEXIWEAR/blob/master/HW/HEXIWEAR_DockingStation/HEXIWEAR_DockingStation_DAPLINK_FW.bin

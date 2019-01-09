@@ -5,18 +5,20 @@
  */
 
 #include <zephyr.h>
-#include <board.h>
 #include <device.h>
 #include <gpio.h>
 #include <misc/util.h>
 #include <misc/printk.h>
 
 /* change this to use another GPIO port */
+#ifndef SW0_GPIO_CONTROLLER
 #ifdef SW0_GPIO_NAME
-#define PORT	SW0_GPIO_NAME
+#define SW0_GPIO_CONTROLLER SW0_GPIO_NAME
 #else
-#error SW0_GPIO_NAME needs to be set in board.h
+#error SW0_GPIO_NAME or SW0_GPIO_CONTROLLER needs to be set in board.h
 #endif
+#endif
+#define PORT	SW0_GPIO_CONTROLLER
 
 /* change this to use another GPIO pin */
 #ifdef SW0_GPIO_PIN
@@ -26,18 +28,25 @@
 #endif
 
 /* change to use another GPIO pin interrupt config */
-#ifdef SW0_GPIO_INT_CONF
-#define EDGE    SW0_GPIO_INT_CONF
+#ifdef SW0_GPIO_FLAGS
+#define EDGE    (SW0_GPIO_FLAGS | GPIO_INT_EDGE)
 #else
 /*
- * If SW0_GPIO_INT_CONF not defined used default EDGE value.
+ * If SW0_GPIO_FLAGS not defined used default EDGE value.
  * Change this to use a different interrupt trigger
  */
 #define EDGE    (GPIO_INT_EDGE | GPIO_INT_ACTIVE_LOW)
 #endif
 
 /* change this to enable pull-up/pull-down */
-#define PULL_UP 0
+#ifndef SW0_GPIO_FLAGS
+#ifdef SW0_GPIO_PIN_PUD
+#define SW0_GPIO_FLAGS SW0_GPIO_PIN_PUD
+#else
+#define SW0_GPIO_FLAGS 0
+#endif
+#endif
+#define PULL_UP SW0_GPIO_FLAGS
 
 /* Sleep time */
 #define SLEEP_TIME	500
@@ -71,7 +80,7 @@ void main(void)
 	gpio_pin_enable_callback(gpiob, PIN);
 
 	while (1) {
-		u32_t val = 0;
+		u32_t val = 0U;
 
 		gpio_pin_read(gpiob, PIN, &val);
 		k_sleep(SLEEP_TIME);

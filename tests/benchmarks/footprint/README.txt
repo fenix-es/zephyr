@@ -79,9 +79,10 @@ minimal
 -------
 This configuration does NOT produce any output. To observe its operation,
 invoke it using gdb and observe that:
-- the kernel's timer ISR & main thread increment "K_LowTime" on a regular
-  basis
-- nano_cpu_idle() is invoked by the idle task each time K_LowTime is incremented
+- the kernel's timer ISR & main thread increment "z_tick_get()" on a
+  regular basis
+- k_cpu_idle() is invoked by the idle task each time z_tick_get()
+  is incremented
 
 regular
 -------

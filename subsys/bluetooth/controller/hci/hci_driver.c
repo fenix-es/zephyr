@@ -29,29 +29,34 @@
 #endif
 
 #define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_HCI_DRIVER)
+#define LOG_MODULE_NAME bt_ctlr_hci_driver
 #include "common/log.h"
 
 #include "util/util.h"
+#include "util/memq.h"
+
 #include "hal/ccm.h"
+
+#if defined(CONFIG_SOC_FAMILY_NRF)
 #include "hal/radio.h"
+#endif /* CONFIG_SOC_FAMILY_NRF */
+
 #include "ll_sw/pdu.h"
-#include "ll_sw/ctrl.h"
+#include "ll_sw/lll.h"
 #include "ll.h"
+
 #include "hci_internal.h"
 
 #include "hal/debug.h"
-
-#define NODE_RX(_node) CONTAINER_OF(_node, struct radio_pdu_node_rx, \
-				    hdr.onion.node)
 
 static K_SEM_DEFINE(sem_prio_recv, 0, UINT_MAX);
 static K_FIFO_DEFINE(recv_fifo);
 
 struct k_thread prio_recv_thread_data;
-static BT_STACK_NOINIT(prio_recv_thread_stack,
-		       CONFIG_BT_CTLR_RX_PRIO_STACK_SIZE);
+static K_THREAD_STACK_DEFINE(prio_recv_thread_stack,
+			     CONFIG_BT_CTLR_RX_PRIO_STACK_SIZE);
 struct k_thread recv_thread_data;
-static BT_STACK_NOINIT(recv_thread_stack, CONFIG_BT_RX_STACK_SIZE);
+static K_THREAD_STACK_DEFINE(recv_thread_stack, CONFIG_BT_RX_STACK_SIZE);
 
 #if defined(CONFIG_INIT_STACKS)
 static u32_t prio_ts;
@@ -68,11 +73,11 @@ static s32_t hbuf_count;
 static void prio_recv_thread(void *p1, void *p2, void *p3)
 {
 	while (1) {
-		struct radio_pdu_node_rx *node_rx;
+		void *node_rx;
 		u8_t num_cmplt;
 		u16_t handle;
 
-		while ((num_cmplt = radio_rx_get(&node_rx, &handle))) {
+		while ((num_cmplt = ll_rx_get(&node_rx, &handle))) {
 #if defined(CONFIG_BT_CONN)
 			struct net_buf *buf;
 
@@ -86,7 +91,7 @@ static void prio_recv_thread(void *p1, void *p2, void *p3)
 
 		if (node_rx) {
 
-			radio_rx_dequeue();
+			ll_rx_dequeue();
 
 			BT_DBG("RX node enqueue");
 			k_fifo_put(&recv_fifo, node_rx);
@@ -108,7 +113,7 @@ static void prio_recv_thread(void *p1, void *p2, void *p3)
 	}
 }
 
-static inline struct net_buf *encode_node(struct radio_pdu_node_rx *node_rx,
+static inline struct net_buf *encode_node(struct node_rx_pdu *node_rx,
 					  s8_t class)
 {
 	struct net_buf *buf = NULL;
@@ -139,14 +144,21 @@ static inline struct net_buf *encode_node(struct radio_pdu_node_rx *node_rx,
 		break;
 	}
 
-	radio_rx_fc_set(node_rx->hdr.handle, 0);
-	node_rx->hdr.onion.next = 0;
-	radio_rx_mem_release(&node_rx);
+#if defined(CONFIG_BT_LL_SW)
+	{
+		extern u8_t radio_rx_fc_set(u16_t handle, u8_t fc);
+
+		radio_rx_fc_set(node_rx->hdr.handle, 0);
+	}
+#endif /* CONFIG_BT_LL_SW */
+
+	node_rx->hdr.next = NULL;
+	ll_rx_mem_release((void **)&node_rx);
 
 	return buf;
 }
 
-static inline struct net_buf *process_node(struct radio_pdu_node_rx *node_rx)
+static inline struct net_buf *process_node(struct node_rx_pdu *node_rx)
 {
 	s8_t class = hci_get_class(node_rx);
 	struct net_buf *buf = NULL;
@@ -166,8 +178,7 @@ static inline struct net_buf *process_node(struct radio_pdu_node_rx *node_rx)
 			/* fallthrough */
 		case HCI_CLASS_ACL_DATA:
 			if (pend || !hbuf_count) {
-				sys_slist_append(&hbuf_pend,
-						 &node_rx->hdr.onion.node);
+				sys_slist_append(&hbuf_pend, (void *)node_rx);
 				BT_DBG("FC: Queuing item: %d", class);
 				return NULL;
 			}
@@ -186,13 +197,12 @@ static inline struct net_buf *process_node(struct radio_pdu_node_rx *node_rx)
 }
 
 #if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
-static inline struct net_buf *process_hbuf(struct radio_pdu_node_rx *n)
+static inline struct net_buf *process_hbuf(struct node_rx_pdu *n)
 {
 	/* shadow total count in case of preemption */
-	struct radio_pdu_node_rx *node_rx = NULL;
+	struct node_rx_pdu *node_rx = NULL;
 	s32_t hbuf_total = hci_hbuf_total;
 	struct net_buf *buf = NULL;
-	sys_snode_t *node = NULL;
 	s8_t class;
 	int reset;
 
@@ -211,20 +221,19 @@ static inline struct net_buf *process_hbuf(struct radio_pdu_node_rx *n)
 	hbuf_count = hbuf_total - (hci_hbuf_sent - hci_hbuf_acked);
 
 	/* host acked ACL packets, try to dequeue from hbuf */
-	node = sys_slist_peek_head(&hbuf_pend);
-	if (!node) {
+	node_rx = (void *)sys_slist_peek_head(&hbuf_pend);
+	if (!node_rx) {
 		return NULL;
 	}
 
 	/* Return early if this iteration already has a node to process */
-	node_rx = NODE_RX(node);
 	class = hci_get_class(node_rx);
 	if (n) {
 		if (class == HCI_CLASS_EVT_CONNECTION ||
 		    (class == HCI_CLASS_ACL_DATA && hbuf_count)) {
 			/* node to process later, schedule an iteration */
 			BT_DBG("FC: signalling");
-			k_poll_signal(&hbuf_signal, 0x0);
+			k_poll_signal_raise(&hbuf_signal, 0x0);
 		}
 		return NULL;
 	}
@@ -240,7 +249,7 @@ static inline struct net_buf *process_hbuf(struct radio_pdu_node_rx *n)
 			(void) sys_slist_get(&hbuf_pend);
 		} else {
 			/* no buffers, HCI will signal */
-			node = NULL;
+			node_rx = NULL;
 		}
 		break;
 	case HCI_CLASS_EVT_DISCARDABLE:
@@ -250,14 +259,13 @@ static inline struct net_buf *process_hbuf(struct radio_pdu_node_rx *n)
 		break;
 	}
 
-	if (node) {
+	if (node_rx) {
 		buf = encode_node(node_rx, class);
 		/* Update host buffers after encoding */
 		hbuf_count = hbuf_total - (hci_hbuf_sent - hci_hbuf_acked);
 		/* next node */
-		node = sys_slist_peek_head(&hbuf_pend);
-		if (node) {
-			node_rx = NODE_RX(node);
+		node_rx = (void *)sys_slist_peek_head(&hbuf_pend);
+		if (node_rx) {
 			class = hci_get_class(node_rx);
 
 			if (class == HCI_CLASS_EVT_CONNECTION ||
@@ -266,7 +274,7 @@ static inline struct net_buf *process_hbuf(struct radio_pdu_node_rx *n)
 				 * iteration
 				 */
 				BT_DBG("FC: signalling");
-				k_poll_signal(&hbuf_signal, 0x0);
+				k_poll_signal_raise(&hbuf_signal, 0x0);
 			}
 		}
 	}
@@ -290,7 +298,7 @@ static void recv_thread(void *p1, void *p2, void *p3)
 #endif
 
 	while (1) {
-		struct radio_pdu_node_rx *node_rx = NULL;
+		struct node_rx_pdu *node_rx = NULL;
 		struct net_buf *buf = NULL;
 
 		BT_DBG("blocking");
@@ -345,12 +353,18 @@ static void recv_thread(void *p1, void *p2, void *p3)
 
 static int cmd_handle(struct net_buf *buf)
 {
+	void *node_rx = NULL;
 	struct net_buf *evt;
 
-	evt = hci_cmd_handle(buf);
+	evt = hci_cmd_handle(buf, &node_rx);
 	if (evt) {
 		BT_DBG("Replying with event of %u bytes", evt->len);
 		bt_recv_prio(evt);
+
+		if (node_rx) {
+			BT_DBG("RX node enqueue");
+			k_fifo_put(&recv_fifo, node_rx);
+		}
 	}
 
 	return 0;

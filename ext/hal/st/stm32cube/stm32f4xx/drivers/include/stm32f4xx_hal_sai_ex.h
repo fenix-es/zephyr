@@ -2,8 +2,6 @@
   ******************************************************************************
   * @file    stm32f4xx_hal_sai_ex.h
   * @author  MCD Application Team
-  * @version V1.7.1
-  * @date    14-April-2017
   * @brief   Header file of SAI Extension HAL module.
   ******************************************************************************
   * @attention
@@ -33,7 +31,7 @@
   * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   *
   ******************************************************************************
-  */ 
+  */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __STM32F4xx_HAL_SAI_EX_H
@@ -44,7 +42,7 @@
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include "stm32f4xx_hal_def.h"  
+#include "stm32f4xx_hal_def.h"
 
 /** @addtogroup STM32F4xx_HAL_Driver
   * @{
@@ -63,12 +61,12 @@
 /** @defgroup SAI_Clock_Source  SAI Clock Source
   * @{
   */
-#if defined(STM32F413xx) || defined(STM32F423xx)      
+#if defined(STM32F413xx) || defined(STM32F423xx)
 #define SAI_CLKSOURCE_PLLI2S             0x00000000U
 #define SAI_CLKSOURCE_EXT                0x00100000U
 #define SAI_CLKSOURCE_PLLR               0x00200000U
 #define SAI_CLKSOURCE_HS                 0x00300000U
-#else      
+#else
 #define SAI_CLKSOURCE_PLLSAI             0x00000000U
 #define SAI_CLKSOURCE_PLLI2S             0x00100000U
 #define SAI_CLKSOURCE_EXT                0x00200000U
@@ -79,7 +77,7 @@
 /**
   * @}
   */
-      
+
 /* Exported functions --------------------------------------------------------*/
 /** @addtogroup SAIEx_Exported_Functions
   * @{
@@ -103,7 +101,7 @@ uint32_t SAI_GetInputClock(SAI_HandleTypeDef *hsai);
 /* Private variables ---------------------------------------------------------*/
 /* Private constants ---------------------------------------------------------*/
 /* Private macros ------------------------------------------------------------*/
-#if defined(STM32F413xx) || defined(STM32F423xx) 
+#if defined(STM32F413xx) || defined(STM32F423xx)
 #define IS_SAI_CLK_SOURCE(SOURCE) (((SOURCE) == SAI_CLKSOURCE_PLLI2S) ||\
                                    ((SOURCE) == SAI_CLKSOURCE_EXT)||\
                                    ((SOURCE) == SAI_CLKSOURCE_PLLR)||\

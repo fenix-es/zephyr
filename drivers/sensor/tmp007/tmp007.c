@@ -12,8 +12,12 @@
 #include <kernel.h>
 #include <sensor.h>
 #include <misc/__assert.h>
+#include <logging/log.h>
 
 #include "tmp007.h"
+
+#define LOG_LEVEL CONFIG_SENSOR_LOG_LEVEL
+LOG_MODULE_REGISTER(TMP007);
 
 int tmp007_reg_read(struct tmp007_data *drv_data, u8_t reg, u16_t *val)
 {
@@ -50,7 +54,7 @@ int tmp007_reg_write(struct tmp007_data *drv_data, u8_t reg, u16_t val)
 int tmp007_reg_update(struct tmp007_data *drv_data, u8_t reg,
 		      u16_t mask, u16_t val)
 {
-	u16_t old_val = 0;
+	u16_t old_val = 0U;
 	u16_t new_val;
 
 	if (tmp007_reg_read(drv_data, reg, &old_val) < 0) {
@@ -68,7 +72,7 @@ static int tmp007_sample_fetch(struct device *dev, enum sensor_channel chan)
 	struct tmp007_data *drv_data = dev->driver_data;
 	u16_t val;
 
-	__ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL || chan == SENSOR_CHAN_TEMP);
+	__ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL || chan == SENSOR_CHAN_AMBIENT_TEMP);
 
 	if (tmp007_reg_read(drv_data, TMP007_REG_TOBJ, &val) < 0) {
 		return -EIO;
@@ -90,7 +94,7 @@ static int tmp007_channel_get(struct device *dev,
 	struct tmp007_data *drv_data = dev->driver_data;
 	s32_t uval;
 
-	if (chan != SENSOR_CHAN_TEMP) {
+	if (chan != SENSOR_CHAN_AMBIENT_TEMP) {
 		return -ENOTSUP;
 	}
 
@@ -116,24 +120,23 @@ int tmp007_init(struct device *dev)
 
 	drv_data->i2c = device_get_binding(CONFIG_TMP007_I2C_MASTER_DEV_NAME);
 	if (drv_data->i2c == NULL) {
-		SYS_LOG_DBG("Failed to get pointer to %s device!",
+		LOG_DBG("Failed to get pointer to %s device!",
 			    CONFIG_TMP007_I2C_MASTER_DEV_NAME);
 		return -EINVAL;
 	}
 
 #ifdef CONFIG_TMP007_TRIGGER
 	if (tmp007_init_interrupt(dev) < 0) {
-		SYS_LOG_DBG("Failed to initialize interrupt!");
+		LOG_DBG("Failed to initialize interrupt!");
 		return -EIO;
 	}
 #endif
-
-	dev->driver_api = &tmp007_driver_api;
 
 	return 0;
 }
 
 struct tmp007_data tmp007_driver;
 
-DEVICE_INIT(tmp007, CONFIG_TMP007_NAME, tmp007_init, &tmp007_driver,
-	    NULL, POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY);
+DEVICE_AND_API_INIT(tmp007, CONFIG_TMP007_NAME, tmp007_init, &tmp007_driver,
+		    NULL, POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY,
+		    &tmp007_driver_api);

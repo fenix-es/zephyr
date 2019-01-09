@@ -2,8 +2,6 @@
   ******************************************************************************
   * @file    stm32f4xx_hal_wwdg.h
   * @author  MCD Application Team
-  * @version V1.7.1
-  * @date    14-April-2017
   * @brief   Header file of WWDG HAL module.
   ******************************************************************************
   * @attention
@@ -33,7 +31,7 @@
   * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   *
   ******************************************************************************
-  */ 
+  */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __STM32F4xx_HAL_WWDG_H
@@ -52,14 +50,14 @@
 
 /** @addtogroup WWDG
   * @{
-  */ 
+  */
 
 /* Exported types ------------------------------------------------------------*/
 /** @defgroup WWDG_Exported_Types WWDG Exported Types
   * @{
   */
 
-/** 
+/**
   * @brief  WWDG Init structure definition
   */
 typedef struct
@@ -117,7 +115,7 @@ typedef struct
 
 /** @defgroup WWDG_Prescaler WWDG Prescaler
   * @{
-  */ 
+  */
 #define WWDG_PRESCALER_1                 0x00000000U  /*!< WWDG counter clock = (PCLK1/4096)/1 */
 #define WWDG_PRESCALER_2                  WWDG_CFR_WDGTB0  /*!< WWDG counter clock = (PCLK1/4096)/2 */
 #define WWDG_PRESCALER_4                  WWDG_CFR_WDGTB1  /*!< WWDG counter clock = (PCLK1/4096)/4 */
@@ -168,14 +166,14 @@ typedef struct
 
 /**
   * @brief  Enables the WWDG peripheral.
-  * @param  __HANDLE__: WWDG handle
+  * @param  __HANDLE__ WWDG handle
   * @retval None
   */
 #define __HAL_WWDG_ENABLE(__HANDLE__) SET_BIT((__HANDLE__)->Instance->CR, WWDG_CR_WDGA)
 
 /**
   * @brief  Enables the WWDG early wakeup interrupt.
-  * @param  __HANDLE__: WWDG handle
+  * @param  __HANDLE__ WWDG handle
   * @param  __INTERRUPT__  specifies the interrupt to enable.
   *         This parameter can be one of the following values:
   *            @arg WWDG_IT_EWI: Early wakeup interrupt
@@ -196,8 +194,8 @@ typedef struct
 
 /** @brief  Clear the WWDG's interrupt pending bits
   *         bits to clear the selected interrupt pending bits.
-  * @param  __HANDLE__: WWDG handle
-  * @param  __INTERRUPT__: specifies the interrupt pending bit to clear.
+  * @param  __HANDLE__ WWDG handle
+  * @param  __INTERRUPT__ specifies the interrupt pending bit to clear.
   *         This parameter can be one of the following values:
   *            @arg WWDG_FLAG_EWIF: Early wakeup interrupt flag
   */
@@ -215,8 +213,8 @@ typedef struct
 
 /**
   * @brief  Clears the WWDG's pending flags.
-  * @param  __HANDLE__: WWDG handle
-  * @param  __FLAG__: specifies the flag to clear.
+  * @param  __HANDLE__ WWDG handle
+  * @param  __FLAG__ specifies the flag to clear.
   *         This parameter can be one of the following values:
   *            @arg WWDG_FLAG_EWIF: Early wakeup interrupt flag
   * @retval None
@@ -224,8 +222,8 @@ typedef struct
 #define __HAL_WWDG_CLEAR_FLAG(__HANDLE__, __FLAG__) (((__HANDLE__)->Instance->SR) = ~(__FLAG__))
 
 /** @brief  Checks if the specified WWDG interrupt source is enabled or disabled.
-  * @param  __HANDLE__: WWDG Handle.
-  * @param  __INTERRUPT__: specifies the WWDG interrupt source to check.
+  * @param  __HANDLE__ WWDG Handle.
+  * @param  __INTERRUPT__ specifies the WWDG interrupt source to check.
   *          This parameter can be one of the following values:
   *            @arg WWDG_IT_EWI: Early Wakeup Interrupt
   * @retval state of __INTERRUPT__ (TRUE or FALSE).

@@ -4,7 +4,7 @@ Networking API
 ##############
 
 .. contents::
-   :depth: 1
+   :depth: 2
    :local:
    :backlinks: top
 
@@ -12,6 +12,11 @@ This is the full set of networking public APIs. Their exposure
 depends on relevant Kconfig options. For instance IPv6 related
 APIs will not be present if :option:`CONFIG_NET_IPV6` has not
 been selected.
+
+.. comment
+   not documenting
+   .. doxygengroup:: networking
+   .. doxygengroup:: arp
 
 Network core helpers
 ********************
@@ -73,6 +78,18 @@ BSD Sockets compatible API
 .. doxygengroup:: bsd_sockets
    :project: Zephyr
 
+Network configuration library
+*****************************
+
+.. doxygengroup:: net_config
+   :project: Zephyr
+
+Network long timeout support
+****************************
+
+.. doxygengroup:: net_timeout
+   :project: Zephyr
+
 Network offloading support
 **************************
 
@@ -83,6 +100,18 @@ Network statistics
 ******************
 
 .. doxygengroup:: net_stats
+   :project: Zephyr
+
+Precision Time Protocol time
+****************************
+
+.. doxygengroup:: ptp_time
+   :project: Zephyr
+
+Promiscuous mode support
+************************
+
+.. doxygengroup:: promiscuous
    :project: Zephyr
 
 Trickle timer support
@@ -97,6 +126,18 @@ UDP
 .. doxygengroup:: udp
    :project: Zephyr
 
+Hostname Configuration Library
+******************************
+
+.. doxygengroup:: net_hostname
+   :project: Zephyr
+
+generic Precision Time Protocol (gPTP)
+**************************************
+
+.. doxygengroup:: gptp
+   :project: Zephyr
+
 Network technologies
 ********************
 
@@ -106,10 +147,34 @@ Ethernet
 .. doxygengroup:: ethernet
    :project: Zephyr
 
+Ethernet Management
+===================
+
+.. doxygengroup:: ethernet_mgmt
+   :project: Zephyr
+
+Virtual LAN definitions and helpers
+===================================
+
+.. doxygengroup:: vlan
+   :project: Zephyr
+
+Link Layer Discovery Protocol definitions and helpers
+=====================================================
+
+.. doxygengroup:: lldp
+   :project: Zephyr
+
 IEEE 802.15.4
 =============
 
 .. doxygengroup:: ieee802154
+   :project: Zephyr
+
+IEEE 802.15.4 Management
+========================
+
+.. doxygengroup:: ieee802154_mgmt
    :project: Zephyr
 
 Network and application libraries
@@ -133,10 +198,10 @@ MQTT 3.1.1
 .. doxygengroup:: mqtt
    :project: Zephyr
 
-CoAP
-====
+CoAP over Sockets
+=================
 
-.. doxygengroup:: coap
+.. doxygengroup:: coap_sock
    :project: Zephyr
 
 DNS Resolve
@@ -149,4 +214,22 @@ HTTP
 ====
 
 .. doxygengroup:: http
+   :project: Zephyr
+
+Websocket
+=========
+
+.. doxygengroup:: websocket
+   :project: Zephyr
+
+Websocket console
+=================
+
+.. doxygengroup:: websocket_console
+   :project: Zephyr
+
+TLS credentials
+***************
+
+.. doxygengroup:: tls_credentials
    :project: Zephyr

@@ -8,8 +8,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef __UDP_H
-#define __UDP_H
+#ifndef ZEPHYR_INCLUDE_NET_UDP_H_
+#define ZEPHYR_INCLUDE_NET_UDP_H_
 
 #include <zephyr/types.h>
 
@@ -24,6 +24,7 @@ extern "C" {
 /**
  * @brief UDP library
  * @defgroup udp UDP Library
+ * @ingroup networking
  * @{
  */
 
@@ -40,7 +41,7 @@ extern "C" {
  *
  * @param pkt Network packet
  * @param hdr Where to place the header if it does not fit in first fragment
- * of the network packet. This might not be pupulated if UDP header fits in
+ * of the network packet. This might not be populated if UDP header fits in
  * net_buf fragment.
  *
  * @return Return pointer to header or NULL if something went wrong.
@@ -91,4 +92,4 @@ static inline struct net_udp_hdr *net_udp_set_hdr(struct net_pkt *pkt,
 }
 #endif
 
-#endif /* __UDP_H */
+#endif /* ZEPHYR_INCLUDE_NET_UDP_H_ */

@@ -33,17 +33,12 @@ The default SoC for this board supported in Zephyr is the EM9D.
 This configuration is a Harvard Architecture, with a separate
 instruction bus and data bus. Instruction memory is called ICCM
 and data memory is called DCCM. The configuration file for EM9D
-is found in :file:`arch/arc/soc/em9d/Kconfig.defconfig`.
+is found in :file:`soc/arc/snps_emsk/Kconfig.defconfig.em9d`.
 
 If you have a larger program, you can select the EM7D or EM11D, which gives
 access to 128KB DRAM with i-cache and d-cache. The configuration file for EM7D
-is found in :file:`arch/arc/soc/em7d/Kconfig.defconfig` and EM11D is found in
-:file:`arch/arc/soc/em11d/Kconfig.defconfig`.
-
-.. note::
-
-   EM7D of EM Starter Kit 2.3 has secureshield feature,
-   which is not supported in Zephyr currently.
+is found in :file:`soc/arc/snps_emsk/Kconfig.defconfig.em7d` and EM11D is
+found in :file:`soc/arc/snps_emsk/Kconfig.defconfig.em11d`.
 
 
 Hardware
@@ -74,14 +69,15 @@ In Zephyr, only firmware versions 2.2 and 2.3 are supported.
 * For EM Starter Kit 2.2, EM7D, EM9D and EM11D core configurations are supported.
 
   * Use :option:`CONFIG_BOARD_EM_STARTERKIT_R22` to select 2.2 version.
-  * Use :option:`CONFIG_SOC_EM7D`, :option:`CONFIG_SOC_EM9D` or
-    :option:`CONFIG_SOC_EM11D` to select EM7D, EM9D or EM11D.
+  * Use :option:`CONFIG_SOC_EMSK_EM7D`, :option:`CONFIG_SOC_EMSK_EM9D` or
+    :option:`CONFIG_SOC_EMSK_EM11D` to select EM7D or EM9D or EM11D.
 
-* For EM Starter Kit 2.3, EM9D and EM11D core configurations are supported.
+* For EM Starter Kit 2.3, EM7D, EM9D and EM11D core configurations are
+  supported.
 
   * Use :option:`CONFIG_BOARD_EM_STARTERKIT_R23` to select 2.3 version.
-  * Use :option:`CONFIG_SOC_EM9D` or :option:`CONFIG_SOC_EM11D`
-    to select EM9D or EM11D.
+  * Use :option:`CONFIG_SOC_EMSK_EM7D`, :option:`CONFIG_SOC_EMSK_EM9D` or
+    :option:`CONFIG_SOC_EMSK_EM11D` to select EM7D or EM9D or EM11D.
 
 Supported Features
 ==================
@@ -176,18 +172,12 @@ Set up Zephyr Software
 
 Since there are different firmware versions of EM Starter Kit, you need to
 choose the proper firmware version supported in Zephyr.
-If you select one core configuration in EM Starter Kit, you need to change
-the default EM Starter Kit board default configuration file
-:file:`/boards/arc/em_starterkit/em_starterkit_defconfig`.
 
-For example, if you choose EM Starter Kit 2.2 EM11D, you need to change
-the ``em_starterkit_defconfig`` file to say:
+Three different configurations exist for this board:
 
-.. code-block:: shell
-
-   CONFIG_SOC_EM11D=y
-   CONFIG_BOARD_EM_STARTERKIT=y
-   CONFIG_BOARD_EM_STARTERKIT_R22=y
+* EM7D: em_starterkit_em7d_defconfig
+* EM9D: em_starterkit_defconfig
+* EM11D: em_starterkit_em11d_defconfig
 
 
 Building Sample Applications
@@ -197,14 +187,18 @@ You can try many of the sample applications or tests, but let us discuss
 the one called :ref:`hello_world`.
 It is found in :file:`$ZEPHYR_BASE/samples/hello_world`.
 
+Configuring
+-----------
+
 You may need to write a prj_arc.conf file if the sample doesn't have one.
-Next, you can use the make menuconfig rule to configure the target. By
-providing the argument "BOARD=em_starterkit", you can select the ARC
+Next, you can use the menuconfig rule to configure the target. By
+specifying ``em_starterkit`` as the board configuration, you can select the ARC
 EM Starter Kit board support for Zephyr.
 
-.. code-block:: console
-
-   $ make menuconfig BOARD=em_starterkit
+.. zephyr-app-commands::
+   :board: em_starterkit
+   :zephyr-app: samples/hello_world
+   :goals: menuconfig
 
 On this board you will also need to consider the "ARC SoC Selection" and set
 it either to EM9D or EM11D. To boot up the EM9D on the board, all dip
@@ -213,11 +207,18 @@ are made in the normal way. To boot up the EM11D on the board,
 all dip switches should be UP except for switch 2. Next press the button
 above the letter C in the "ARC" logo on the silkscreen.
 
-To build the application, execute make:
+Building
+--------
 
-.. code-block:: console
+You can build application in the usual way.  Refer to
+:ref:`build_an_application` for more details. Here is an example for
+:ref:`hello_world`.
 
-   $ make BOARD=em_starterkit
+.. zephyr-app-commands::
+   :board: em_starterkit
+   :zephyr-app: samples/hello_world
+   :maybe-skip-config:
+   :goals: build
 
 Connecting Serial Output
 =========================
@@ -247,29 +248,32 @@ Debugging
 Using the latest version of Zephyr SDK(>=0.9), you can debug and flash
 EM Starterkit directly.
 
-Build and debug the application with the following commands:
+One option is to build and debug the application using the usual
+Zephyr build system commands.
 
-.. code-block:: console
-
-   $ cd <my app>
-   $ make BOARD=em_starterkit debug
+.. zephyr-app-commands::
+   :board: em_starterkit
+   :app: <my app>
+   :goals: debug
 
 At this point you can do your normal debug session. Set breakpoints and then
 'c' to continue into the program.
 
-Launch the debug server on the EM Starter Kit:
+The other option is to launch a debug server, as follows.
 
-.. code-block:: console
+.. zephyr-app-commands::
+   :board: em_starterkit
+   :app: <my app>
+   :goals: debugserver
 
-   $ make BOARD=em_starterkit debugserver
-
-Connect to the debug server at the EM Starter Kit from a second console:
+Then connect to the debug server at the EM Starter Kit from a second
+console, from the build directory containing the output :file:`zephyr.elf`.
 
 .. code-block:: console
 
    $ cd <my app>
    $ $ZEPHYR_SDK_INSTALL_DIR/sysroots/x86_64-pokysdk-linux/usr/bin/arc-zephyr-elf/arc-zephyr-elf-gdb \
-      outdir/em_starterkit/zephyr.elf
+      zephyr.elf
    (gdb) target remote localhost:3333
    (gdb) load
    (gdb) b main
@@ -279,11 +283,11 @@ Flashing
 ========
 
 If you just want to download the application to the EM Starter Kit's CCM
-or DDR and run, you can also use this command to achieve this.
+or DDR and run, you can do so in the usual way.
 
-.. code-block:: console
-
-   $ make BOARD=em_starterkit flash
+.. zephyr-app-commands::
+   :board: em_starterkit
+   :goals: flash
 
 This command still uses openocd and gdb to load application elf file
 to EM Starter Kit, but it will load application and then run immediately.
@@ -308,8 +312,8 @@ Release Notes
 
 The following is a list of TODO items:
 
-* :jira:`ZEP-1153`: Zephyr needs i-cache API (all targets)
-* :jira:`ZEP-713`: Zephyr ARC port doesn't yet support nested regular interrupts.
+* :jira:`GH-2647`: Zephyr needs i-cache API (all targets)
+* :jira:`GH-2230`: Zephyr ARC port doesn't yet support nested regular interrupts.
 * pinmux driver: Possibly it can be written to configure PMods too.
 
 References

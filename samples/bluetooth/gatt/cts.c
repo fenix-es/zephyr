@@ -51,7 +51,7 @@ static ssize_t write_ct(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 	}
 
 	memcpy(value + offset, buf, len);
-	ct_update = 1;
+	ct_update = 1U;
 
 	return len;
 }
@@ -60,10 +60,9 @@ static ssize_t write_ct(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 static struct bt_gatt_attr attrs[] = {
 	BT_GATT_PRIMARY_SERVICE(BT_UUID_CTS),
 	BT_GATT_CHARACTERISTIC(BT_UUID_CTS_CURRENT_TIME, BT_GATT_CHRC_READ |
-			       BT_GATT_CHRC_NOTIFY | BT_GATT_CHRC_WRITE),
-	BT_GATT_DESCRIPTOR(BT_UUID_CTS_CURRENT_TIME,
-			   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
-			   read_ct, write_ct, ct),
+			       BT_GATT_CHRC_NOTIFY | BT_GATT_CHRC_WRITE,
+			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+			       read_ct, write_ct, ct),
 	BT_GATT_CCC(ct_ccc_cfg, ct_ccc_cfg_changed),
 };
 
@@ -80,20 +79,20 @@ static void generate_current_time(u8_t *buf)
 
 	year = sys_cpu_to_le16(2015);
 	memcpy(buf,  &year, 2); /* year */
-	buf[2] = 5; /* months starting from 1 */
-	buf[3] = 30; /* day */
-	buf[4] = 12; /* hours */
-	buf[5] = 45; /* minutes */
-	buf[6] = 30; /* seconds */
+	buf[2] = 5U; /* months starting from 1 */
+	buf[3] = 30U; /* day */
+	buf[4] = 12U; /* hours */
+	buf[5] = 45U; /* minutes */
+	buf[6] = 30U; /* seconds */
 
 	/* 'Day of Week' part of 'Day Date Time' */
-	buf[7] = 1; /* day of week starting from 1 */
+	buf[7] = 1U; /* day of week starting from 1 */
 
 	/* 'Fractions 256 part of 'Exact Time 256' */
-	buf[8] = 0;
+	buf[8] = 0U;
 
 	/* Adjust reason */
-	buf[9] = 0; /* No update, change, etc */
+	buf[9] = 0U; /* No update, change, etc */
 }
 
 void cts_init(void)
@@ -110,6 +109,6 @@ void cts_notify(void)
 		return;
 	}
 
-	ct_update = 0;
-	bt_gatt_notify(NULL, &attrs[3], &ct, sizeof(ct));
+	ct_update = 0U;
+	bt_gatt_notify(NULL, &attrs[1], &ct, sizeof(ct));
 }

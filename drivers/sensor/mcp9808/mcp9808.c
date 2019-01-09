@@ -13,9 +13,12 @@
 #include <init.h>
 #include <misc/byteorder.h>
 #include <misc/__assert.h>
+#include <logging/log.h>
 
 #include "mcp9808.h"
 
+#define LOG_LEVEL CONFIG_SENSOR_LOG_LEVEL
+LOG_MODULE_REGISTER(MCP9808);
 
 int mcp9808_reg_read(struct mcp9808_data *data, u8_t reg, u16_t *val)
 {
@@ -46,7 +49,7 @@ static int mcp9808_sample_fetch(struct device *dev, enum sensor_channel chan)
 {
 	struct mcp9808_data *data = dev->driver_data;
 
-	__ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL || chan == SENSOR_CHAN_TEMP);
+	__ASSERT_NO_MSG(chan == SENSOR_CHAN_ALL || chan == SENSOR_CHAN_AMBIENT_TEMP);
 
 	return mcp9808_reg_read(data, MCP9808_REG_TEMP_AMB, &data->reg_val);
 }
@@ -57,7 +60,7 @@ static int mcp9808_channel_get(struct device *dev,
 {
 	struct mcp9808_data *data = dev->driver_data;
 
-	__ASSERT_NO_MSG(chan == SENSOR_CHAN_TEMP);
+	__ASSERT_NO_MSG(chan == SENSOR_CHAN_AMBIENT_TEMP);
 
 	val->val1 = (data->reg_val & MCP9808_TEMP_INT_MASK) >>
 		     MCP9808_TEMP_INT_SHIFT;
@@ -83,7 +86,7 @@ int mcp9808_init(struct device *dev)
 
 	data->i2c_master = device_get_binding(CONFIG_MCP9808_I2C_DEV_NAME);
 	if (!data->i2c_master) {
-		SYS_LOG_DBG("mcp9808: i2c master not found: %s",
+		LOG_DBG("mcp9808: i2c master not found: %s",
 		    CONFIG_MCP9808_I2C_DEV_NAME);
 		return -EINVAL;
 	}
@@ -92,12 +95,11 @@ int mcp9808_init(struct device *dev)
 
 	mcp9808_setup_interrupt(dev);
 
-	dev->driver_api = &mcp9808_api_funcs;
-
 	return 0;
 }
 
 struct mcp9808_data mcp9808_data;
 
-DEVICE_INIT(mcp9808, CONFIG_MCP9808_DEV_NAME, mcp9808_init, &mcp9808_data,
-	    NULL, POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY);
+DEVICE_AND_API_INIT(mcp9808, CONFIG_MCP9808_DEV_NAME, mcp9808_init,
+		    &mcp9808_data, NULL, POST_KERNEL,
+		    CONFIG_SENSOR_INIT_PRIORITY, &mcp9808_api_funcs);

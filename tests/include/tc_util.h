@@ -22,8 +22,12 @@
 #define PRINT_DATA(fmt, ...) printk(fmt, ##__VA_ARGS__)
 #endif /* CONFIG_STDOUT_CONSOLE */
 
+#if defined CONFIG_ARCH_POSIX
+#include "posix_board_if.h"
+#endif
+
 /**
- * @def TC_PRINT_RUN_ID
+ * @def TC_PRINT_RUNID
  * @brief Report a Run ID
  *
  * When the CPP symbol \c TC_RUNID is defined (for example, from the
@@ -53,16 +57,23 @@
 /* stack size and priority for test suite task */
 #define TASK_STACK_SIZE (1024 * 2)
 
-#define FAIL "FAIL"
-#define PASS "PASS"
 #define FMT_ERROR "%s - %s@%d. "
 
 #define TC_PASS 0
 #define TC_FAIL 1
+#define TC_SKIP 2
+
+static __unused const char *TC_RESULT_STR[] = {
+	[TC_PASS] = "PASS",
+	[TC_FAIL] = "FAIL",
+	[TC_SKIP] = "SKIP",
+};
+
+#define TC_RESULT_TO_STR(result) TC_RESULT_STR[result]
 
 #define TC_ERROR(fmt, ...)                               \
 	do {                                                 \
-		PRINT_DATA(FMT_ERROR, FAIL, __func__, __LINE__); \
+		PRINT_DATA(FMT_ERROR, "FAIL", __func__, __LINE__); \
 		PRINT_DATA(fmt, ##__VA_ARGS__);                  \
 	} while (0)
 
@@ -73,12 +84,17 @@
 /* prints result and the function name */
 #define _TC_END_RESULT(result, func)					\
 	do {								\
-		TC_END(result, "%s - %s.\n",				\
-		       (result) == TC_PASS ? PASS : FAIL, func);	\
+		TC_END(result, "%s - %s\n", TC_RESULT_TO_STR(result), func); \
 		PRINT_LINE;						\
 	} while (0)
 #define TC_END_RESULT(result)                           \
 	_TC_END_RESULT((result), __func__)
+
+#if defined(CONFIG_ARCH_POSIX)
+#define TC_END_POST(result) posix_exit(result)
+#else
+#define TC_END_POST(result)
+#endif /* CONFIG_ARCH_POSIX */
 
 #define TC_END_REPORT(result)                               \
 	do {                                                    \
@@ -87,16 +103,30 @@
 		TC_END(result,                                      \
 		       "PROJECT EXECUTION %s\n",               \
 		       (result) == TC_PASS ? "SUCCESSFUL" : "FAILED");	\
+		TC_END_POST(result);                                    \
 	} while (0)
 
+#if CONFIG_SHELL
+#define TC_CMD_DEFINE(name)						\
+	static int cmd_##name(const struct shell *shell, size_t argc,	\
+			      char **argv) \
+	{								\
+		TC_START(__func__);					\
+		name();							\
+		TC_END_RESULT(TC_PASS);					\
+		return 0;						\
+	}
+#define TC_CMD_ITEM(name)	cmd_##name
+#else
 #define TC_CMD_DEFINE(name)				\
-	int cmd_##name(int argc, char *argv[])		\
+	int cmd_##name(int argc, char *argv[]) 		\
 	{						\
 		TC_START(__func__);			\
 		name();					\
 		TC_END_RESULT(TC_PASS);			\
 		return 0;				\
 	}
-
 #define TC_CMD_ITEM(name) {STRINGIFY(name), cmd_##name, "none"}
+#endif
+
 #endif /* __TC_UTIL_H__ */

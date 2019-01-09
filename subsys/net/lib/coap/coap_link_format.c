@@ -4,10 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#if defined(CONFIG_NET_DEBUG_COAP)
-#define SYS_LOG_DOMAIN "coap"
-#define NET_LOG_ENABLED 1
-#endif
+#include <logging/log.h>
+LOG_MODULE_DECLARE(net_coap, CONFIG_COAP_LOG_LEVEL);
 
 #include <stdlib.h>
 #include <stddef.h>
@@ -176,7 +174,7 @@ enum coap_block_size default_block_size(void)
 static bool append_to_net_pkt(struct net_pkt *pkt, const char *str, u16_t len,
 			      u16_t *remaining, size_t *offset, size_t current)
 {
-	u16_t pos = 0;
+	u16_t pos = 0U;
 	bool res;
 
 	if (!*remaining) {
@@ -376,7 +374,7 @@ int clear_more_flag(struct coap_packet *cpkt)
 		return -EINVAL;
 	}
 
-	delta = 0;
+	delta = 0U;
 	/* Note: coap_well_known_core_get() added Option (delta and len) witho
 	 * out any extended options so parsing will not consider at the moment.
 	 */
@@ -465,7 +463,7 @@ int coap_well_known_core_get(struct coap_resource *resource,
 		goto end;
 	}
 
-	format = 40; /* application/link-format */
+	format = 40U; /* application/link-format */
 
 	r = coap_packet_append_option(response, COAP_OPTION_CONTENT_FORMAT,
 				      &format, sizeof(format));
@@ -514,7 +512,7 @@ int coap_well_known_core_get(struct coap_resource *resource,
 end:
 	/* So it's a last block, reset context */
 	if (!more) {
-		memset(&ctx, 0, sizeof(ctx));
+		(void)memset(&ctx, 0, sizeof(ctx));
 	}
 
 	return r;
@@ -547,11 +545,18 @@ static int format_uri(const char * const *path, struct net_pkt *pkt)
 
 		p++;
 		if (*p) {
-			net_pkt_append_u8(pkt, (u8_t) '/');
+			res = net_pkt_append_u8_timeout(pkt, (u8_t) '/',
+							PKT_WAIT_TIME);
+			if (!res) {
+				return -ENOMEM;
+			}
 		}
 	}
 
-	net_pkt_append_u8(pkt, (u8_t) '>');
+	res = net_pkt_append_u8_timeout(pkt, (u8_t) '>', PKT_WAIT_TIME);
+	if (!res) {
+		return -ENOMEM;
+	}
 
 	return 0;
 }
@@ -575,12 +580,19 @@ static int format_attributes(const char * const *attributes,
 
 		attr++;
 		if (*attr) {
-			net_pkt_append_u8(pkt, (u8_t) ';');
+			res = net_pkt_append_u8_timeout(pkt, (u8_t) ';',
+							PKT_WAIT_TIME);
+			if (!res) {
+				return -ENOMEM;
+			}
 		}
 	}
 
 terminator:
-	net_pkt_append_u8(pkt, (u8_t) ';');
+	res = net_pkt_append_u8_timeout(pkt, (u8_t) ';', PKT_WAIT_TIME);
+	if (!res) {
+		return -ENOMEM;
+	}
 
 	return 0;
 }
@@ -640,7 +652,7 @@ int coap_well_known_core_get(struct coap_resource *resource,
 		return r;
 	}
 
-	format = 40; /* application/link-format */
+	format = 40U; /* application/link-format */
 	r = coap_packet_append_option(response, COAP_OPTION_CONTENT_FORMAT,
 				      &format, sizeof(format));
 	if (r < 0) {
@@ -667,7 +679,7 @@ int coap_well_known_core_get(struct coap_resource *resource,
 }
 #endif
 
-/* Exposing some of the APIs to ZoAP unit tests in tests/net/lib/coap */
+/* Exposing some of the APIs to CoAP unit tests in tests/net/lib/coap */
 #if defined(CONFIG_COAP_TEST_API_ENABLE)
 bool _coap_match_path_uri(const char * const *path,
 			  const char *uri, u16_t len)

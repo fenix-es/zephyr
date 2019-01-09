@@ -6,6 +6,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <logging/log.h>
+LOG_MODULE_REGISTER(net_test, CONFIG_NET_IPV6_LOG_LEVEL);
+
 #include <zephyr/types.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -20,6 +23,7 @@
 #include <net/net_ip.h>
 #include <net/net_core.h>
 #include <net/ethernet.h>
+#include <net/dummy.h>
 #include <net/net_mgmt.h>
 #include <net/net_event.h>
 
@@ -29,7 +33,7 @@
 #define NET_LOG_ENABLED 1
 #include "net_private.h"
 
-#if defined(CONFIG_NET_IPV6)
+#if defined(CONFIG_NET_IPV6_LOG_LEVEL_DBG)
 #define DBG(fmt, ...) printk(fmt, ##__VA_ARGS__)
 #else
 #define DBG(fmt, ...)
@@ -50,7 +54,7 @@ static bool is_leave_msg_ok;
 static bool is_query_received;
 static bool is_report_sent;
 static bool ignore_already;
-static struct k_sem wait_data;
+K_SEM_DEFINE(wait_data, 0, UINT_MAX);
 
 #define WAIT_TIME 500
 #define WAIT_TIME_LONG MSEC_PER_SEC
@@ -94,7 +98,7 @@ static void net_test_iface_init(struct net_if *iface)
 
 #define NET_ICMP_HDR(pkt) ((struct net_icmp_hdr *)net_pkt_icmp_data(pkt))
 
-static int tester_send(struct net_if *iface, struct net_pkt *pkt)
+static int tester_send(struct device *dev, struct net_pkt *pkt)
 {
 	struct net_icmp_hdr *icmp = NET_ICMP_HDR(pkt);
 
@@ -114,15 +118,13 @@ static int tester_send(struct net_if *iface, struct net_pkt *pkt)
 		k_sem_give(&wait_data);
 	}
 
-	net_pkt_unref(pkt);
-
 	return 0;
 }
 
 struct net_test_mld net_test_data;
 
-static struct net_if_api net_test_if_api = {
-	.init = net_test_iface_init,
+static struct dummy_api net_test_if_api = {
+	.iface_api.init = net_test_iface_init,
 	.send = tester_send,
 };
 
@@ -138,6 +140,11 @@ NET_DEVICE_INIT(net_test_mld, "net_test_mld",
 static void group_joined(struct net_mgmt_event_callback *cb,
 			 u32_t nm_event, struct net_if *iface)
 {
+	if (nm_event != NET_EVENT_IPV6_MCAST_JOIN) {
+		/* Spurious callback. */
+		return;
+	}
+
 	is_group_joined = true;
 
 	k_sem_give(&wait_data);
@@ -146,6 +153,11 @@ static void group_joined(struct net_mgmt_event_callback *cb,
 static void group_left(struct net_mgmt_event_callback *cb,
 			 u32_t nm_event, struct net_if *iface)
 {
+	if (nm_event != NET_EVENT_IPV6_MCAST_LEAVE) {
+		/* Spurious callback. */
+		return;
+	}
+
 	is_group_left = true;
 
 	k_sem_give(&wait_data);
@@ -188,16 +200,14 @@ static void mld_setup(void)
 				      NET_ADDR_MANUAL, 0);
 
 	zassert_not_null(ifaddr, "Cannot add IPv6 address");
-
-	/* The semaphore is there to wait the data to be received. */
-	k_sem_init(&wait_data, 0, UINT_MAX);
 }
 
 static void join_group(void)
 {
 	int ret;
 
-	net_ipv6_addr_create(&mcast_addr, 0xff02, 0, 0, 0, 0, 0, 0, 0x0001);
+	/* Using adhoc multicast group outside standard range */
+	net_ipv6_addr_create(&mcast_addr, 0xff10, 0, 0, 0, 0, 0, 0, 0x0001);
 
 	ret = net_ipv6_mld_join(iface, &mcast_addr);
 
@@ -215,7 +225,7 @@ static void leave_group(void)
 {
 	int ret;
 
-	net_ipv6_addr_create(&mcast_addr, 0xff02, 0, 0, 0, 0, 0, 0, 0x0001);
+	net_ipv6_addr_create(&mcast_addr, 0xff10, 0, 0, 0, 0, 0, 0, 0x0001);
 
 	ret = net_ipv6_mld_leave(iface, &mcast_addr);
 
@@ -305,14 +315,13 @@ static void send_query(struct net_if *iface)
 	/* Sent to all MLDv2-capable routers */
 	net_ipv6_addr_create(&dst, 0xff02, 0, 0, 0, 0, 0, 0, 0x0016);
 
-	pkt = net_pkt_get_reserve_tx(net_if_get_ll_reserve(iface, &dst),
-				     K_FOREVER);
+	pkt = net_pkt_get_reserve_tx(K_FOREVER);
 
-	pkt = net_ipv6_create_raw(pkt,
-				  &peer_addr,
-				  &dst,
-				  iface,
-				  NET_IPV6_NEXTHDR_HBHO);
+	pkt = net_ipv6_create(pkt,
+			      &peer_addr,
+			      &dst,
+			      iface,
+			      NET_IPV6_NEXTHDR_HBHO);
 
 	NET_IPV6_HDR(pkt)->hop_limit = 1; /* RFC 3810 ch 7.4 */
 
@@ -344,13 +353,15 @@ static void send_query(struct net_if *iface)
 	net_pkt_append_be16(pkt, 0); /* Resv, S, QRV and QQIC */
 	net_pkt_append_be16(pkt, 0); /* number of addresses */
 
-	net_ipv6_finalize_raw(pkt, NET_IPV6_NEXTHDR_HBHO);
+	net_ipv6_finalize(pkt, NET_IPV6_NEXTHDR_HBHO);
 
 	net_pkt_set_iface(pkt, iface);
 
+	net_pkt_set_ipv6_ext_len(pkt, ROUTER_ALERT_LEN);
+
 	net_pkt_write_be16(pkt, pkt->frags,
 			   NET_IPV6H_LEN + ROUTER_ALERT_LEN + 2,
-			   &pos, ntohs(~net_calc_chksum_icmpv6(pkt)));
+			   &pos, ntohs(net_calc_chksum_icmpv6(pkt)));
 
 	net_recv_data(iface, pkt);
 }

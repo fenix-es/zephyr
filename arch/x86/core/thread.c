@@ -25,20 +25,6 @@
 
 /* forward declaration */
 
-/* Some configurations require that the stack/registers be adjusted before
- * _thread_entry. See discussion in swap.S for _x86_thread_entry_wrapper()
- */
-#if defined(CONFIG_GDB_INFO) || defined(CONFIG_DEBUG_INFO) || \
-	defined(CONFIG_X86_IAMCU)
-#define WRAPPER_REQUIRED
-#endif
-
-#ifdef WRAPPER_REQUIRED
-extern void _x86_thread_entry_wrapper(k_thread_entry_t entry,
-				      void *p1, void *p2, void *p3);
-#endif /* WRAPPER_REQUIRED */
-
-
 /* Initial thread stack frame, such that everything is laid out as expected
  * for when _Swap() switches to it for the first time.
  */
@@ -48,7 +34,7 @@ struct _x86_initial_frame {
 	u32_t ebx;
 	u32_t esi;
 	u32_t edi;
-	void *_thread_entry;
+	void *thread_entry;
 	u32_t eflags;
 	k_thread_entry_t entry;
 	void *p1;
@@ -86,7 +72,7 @@ void _new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 	_new_thread_init(thread, stack_buf, stack_size, priority, options);
 
 #if CONFIG_X86_USERSPACE
-	if (!(options & K_USER)) {
+	if ((options & K_USER) == 0) {
 		/* Running in kernel mode, kernel stack region is also a guard
 		 * page */
 		_x86_mmu_set_flags((void *)(stack_buf - MMU_PAGE_SIZE),
@@ -113,21 +99,21 @@ void _new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 	/* initial EFLAGS; only modify IF and IOPL bits */
 	initial_frame->eflags = (EflagsGet() & ~EFLAGS_MASK) | EFLAGS_INITIAL;
 #ifdef CONFIG_X86_USERSPACE
-	if (options & K_USER) {
-#ifdef WRAPPER_REQUIRED
+	if ((options & K_USER) != 0) {
+#ifdef _THREAD_WRAPPER_REQUIRED
 		initial_frame->edi = (u32_t)_arch_user_mode_enter;
-		initial_frame->_thread_entry = _x86_thread_entry_wrapper;
+		initial_frame->thread_entry = _x86_thread_entry_wrapper;
 #else
-		initial_frame->_thread_entry = _arch_user_mode_enter;
-#endif /* WRAPPER_REQUIRED */
+		initial_frame->thread_entry = _arch_user_mode_enter;
+#endif /* _THREAD_WRAPPER_REQUIRED */
 	} else
 #endif /* CONFIG_X86_USERSPACE */
 	{
-#ifdef WRAPPER_REQUIRED
+#ifdef _THREAD_WRAPPER_REQUIRED
 		initial_frame->edi = (u32_t)_thread_entry;
-		initial_frame->_thread_entry = _x86_thread_entry_wrapper;
+		initial_frame->thread_entry = _x86_thread_entry_wrapper;
 #else
-		initial_frame->_thread_entry = _thread_entry;
+		initial_frame->thread_entry = _thread_entry;
 #endif
 	}
 	/* Remaining _x86_initial_frame members can be garbage, _thread_entry()
@@ -135,13 +121,9 @@ void _new_thread(struct k_thread *thread, k_thread_stack_t *stack,
 	 */
 	thread->callee_saved.esp = (unsigned long)initial_frame;
 
-#if (defined(CONFIG_FP_SHARING) || defined(CONFIG_GDB_INFO))
+#if defined(CONFIG_FP_SHARING)
 	thread->arch.excNestCount = 0;
-#endif /* CONFIG_FP_SHARING || CONFIG_GDB_INFO */
-#ifdef CONFIG_THREAD_MONITOR
-	thread->entry = (struct __thread_entry *)&initial_frame->entry;
-	thread_monitor_init(thread);
-#endif
+#endif /* CONFIG_FP_SHARING */
 }
 
 #ifdef CONFIG_X86_USERSPACE
@@ -164,9 +146,18 @@ void _x86_swap_update_page_tables(struct k_thread *incoming,
 	 */
 	_main_tss.esp0 = incoming->stack_info.start;
 
-	/* TODO: if either thread defines different memory domains, efficiently
+	/* If either thread defines different memory domains, efficiently
 	 * switch between them
 	 */
+	if (incoming->mem_domain_info.mem_domain !=
+	   outgoing->mem_domain_info.mem_domain){
+
+		 /* Ensure that the outgoing mem domain configuration
+		  * is set back to default state.
+		  */
+		_arch_mem_domain_destroy(outgoing->mem_domain_info.mem_domain);
+		_arch_mem_domain_configure(incoming);
+	}
 }
 
 

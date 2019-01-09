@@ -20,26 +20,14 @@
 #include <zephyr/types.h>
 #include <toolchain.h>
 #include <linker/linker-defs.h>
-#include <nano_internal.h>
+#include <kernel_internal.h>
 #include <arch/arm/cortex_m/cmsis.h>
 #include <string.h>
 
-#ifdef CONFIG_ARMV6_M
+#ifdef CONFIG_CPU_CORTEX_M_HAS_VTOR
 
-#define VECTOR_ADDRESS 0
-void __weak relocate_vector_table(void)
-{
-#if defined(CONFIG_XIP) && (CONFIG_FLASH_BASE_ADDRESS != 0) || \
-    !defined(CONFIG_XIP) && (CONFIG_SRAM_BASE_ADDRESS != 0)
-	size_t vector_size = (size_t)_vector_end - (size_t)_vector_start;
-	memcpy(VECTOR_ADDRESS, _vector_start, vector_size);
-#endif
-}
-
-#elif defined(CONFIG_ARMV7_M)
 #ifdef CONFIG_XIP
-#define VECTOR_ADDRESS ((uintptr_t)&_image_rom_start + \
-			CONFIG_TEXT_SECTION_OFFSET)
+#define VECTOR_ADDRESS ((uintptr_t)_vector_start)
 #else
 #define VECTOR_ADDRESS CONFIG_SRAM_BASE_ADDRESS
 #endif
@@ -49,9 +37,26 @@ static inline void relocate_vector_table(void)
 	__DSB();
 	__ISB();
 }
+
 #else
-#error Unknown ARM architecture
-#endif /* CONFIG_ARMv6_M */
+
+#if defined(CONFIG_SW_VECTOR_RELAY)
+_GENERIC_SECTION(.vt_pointer_section) void *_vector_table_pointer;
+#endif
+
+#define VECTOR_ADDRESS 0
+void __weak relocate_vector_table(void)
+{
+#if defined(CONFIG_XIP) && (CONFIG_FLASH_BASE_ADDRESS != 0) || \
+    !defined(CONFIG_XIP) && (CONFIG_SRAM_BASE_ADDRESS != 0)
+	size_t vector_size = (size_t)_vector_end - (size_t)_vector_start;
+	(void)memcpy(VECTOR_ADDRESS, _vector_start, vector_size);
+#elif defined(CONFIG_SW_VECTOR_RELAY)
+	_vector_table_pointer = _vector_start;
+#endif
+}
+
+#endif /* CONFIG_CPU_CORTEX_M_HAS_VTOR */
 
 #ifdef CONFIG_FLOAT
 static inline void enable_floating_point(void)
@@ -73,12 +78,14 @@ static inline void enable_floating_point(void)
 	 * Although automatic state preservation is enabled, the processor
 	 * does not automatically save the volatile FP registers until they
 	 * have first been touched. Perform a dummy move operation so that
-	 * the stack frames are created as expected before any task or fiber
-	 * context switching can occur.
+	 * the stack frames are created as expected before any thread
+	 * context switching can occur. It has to be surrounded by instruction
+	 * synchronisation barriers to ensure that the whole sequence is
+	 * serialized.
 	 */
 	__asm__ volatile(
+		"isb;\n\t"
 		"vmov s0, s0;\n\t"
-		"dsb;\n\t"
 		"isb;\n\t"
 		);
 }
@@ -98,6 +105,8 @@ extern FUNC_NORETURN void _Cstart(void);
  * @return N/A
  */
 
+extern void _IntLibInit(void);
+
 #ifdef CONFIG_BOOT_TIME_MEASUREMENT
 	extern u64_t __start_time_stamp;
 #endif
@@ -108,8 +117,9 @@ void _PrepC(void)
 	_bss_zero();
 	_data_copy();
 #ifdef CONFIG_BOOT_TIME_MEASUREMENT
-	__start_time_stamp = 0;
+	__start_time_stamp = 0U;
 #endif
+	_IntLibInit();
 	_Cstart();
 	CODE_UNREACHABLE;
 }

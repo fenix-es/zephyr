@@ -58,13 +58,20 @@
  * discouraged.
  */
 
-#ifndef ___ASSERT__H_
-#define ___ASSERT__H_
+#ifndef ZEPHYR_INCLUDE_MISC___ASSERT_H_
+#define ZEPHYR_INCLUDE_MISC___ASSERT_H_
+
+#include <stdbool.h>
 
 #ifdef CONFIG_ASSERT
 #ifndef __ASSERT_ON
 #define __ASSERT_ON CONFIG_ASSERT_LEVEL
 #endif
+#endif
+
+#ifdef CONFIG_FORCE_NO_ASSERT
+#undef __ASSERT_ON
+#define __ASSERT_ON 0
 #endif
 
 #ifdef __ASSERT_ON
@@ -74,41 +81,58 @@
 
 #if __ASSERT_ON
 #include <misc/printk.h>
-#define __ASSERT(test, fmt, ...)                                   \
-	do {                                                       \
-		if (!(test)) {                                     \
-			printk("ASSERTION FAIL [%s] @ %s:%d:\n\t", \
-			       _STRINGIFY(test),                   \
-			       __FILE__,                           \
-			       __LINE__);                          \
-			printk(fmt, ##__VA_ARGS__);                \
-			for (;;)                                   \
-				; /* spin thread */                \
-		}                                                  \
-	} while ((0))
+
+#if defined(CONFIG_ARCH_POSIX)
+extern void posix_exit(int exit_code);
+#define __ASSERT_POST posix_exit(1)
+#else
+#define __ASSERT_POST             \
+	for (;;) {                \
+		/* spin thread */ \
+	}
+#endif
+
+#define __ASSERT_LOC(test)                               \
+	printk("ASSERTION FAIL [%s] @ %s:%d\n",    \
+	       _STRINGIFY(test),                         \
+	       __FILE__,                                 \
+	       __LINE__)                                 \
+
+#define __ASSERT_NO_MSG(test)                                            \
+	do {                                                             \
+		if (!(test)) {                                           \
+			__ASSERT_LOC(test);                              \
+			__ASSERT_POST;                                   \
+		}                                                        \
+	} while (false)
+
+#define __ASSERT(test, fmt, ...)                                         \
+	do {                                                             \
+		if (!(test)) {                                           \
+			__ASSERT_LOC(test);                              \
+			printk("\t" fmt "\n", ##__VA_ARGS__);      \
+			__ASSERT_POST;                                   \
+		}                                                        \
+	} while (false)
 
 #define __ASSERT_EVAL(expr1, expr2, test, fmt, ...)                \
 	do {                                                       \
 		expr2;                                             \
 		__ASSERT(test, fmt, ##__VA_ARGS__);                \
-	} while (0)
+	} while (false)
 
 #if (__ASSERT_ON == 1)
 #warning "__ASSERT() statements are ENABLED"
 #endif
 #else
-#define __ASSERT(test, fmt, ...) \
-	do {/* nothing */        \
-	} while ((0))
+#define __ASSERT(test, fmt, ...) { }
 #define __ASSERT_EVAL(expr1, expr2, test, fmt, ...) expr1
+#define __ASSERT_NO_MSG(test) { }
 #endif
 #else
-#define __ASSERT(test, fmt, ...) \
-	do {/* nothing */        \
-	} while ((0))
+#define __ASSERT(test, fmt, ...) { }
 #define __ASSERT_EVAL(expr1, expr2, test, fmt, ...) expr1
+#define __ASSERT_NO_MSG(test) { }
 #endif
 
-#define __ASSERT_NO_MSG(test) __ASSERT(test, "")
-
-#endif /* ___ASSERT__H_ */
+#endif /* ZEPHYR_INCLUDE_MISC___ASSERT_H_ */

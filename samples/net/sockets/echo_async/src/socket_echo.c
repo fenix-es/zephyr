@@ -5,7 +5,9 @@
  */
 
 #include <stdio.h>
+#include <stdbool.h>
 #include <errno.h>
+#include <stdlib.h>
 
 #ifndef __ZEPHYR__
 
@@ -18,7 +20,10 @@
 
 #else
 
-#include <sys/fcntl.h>
+#include <logging/log.h>
+LOG_MODULE_REGISTER(net_echo_async_sample, LOG_LEVEL_DBG);
+
+#include <fcntl.h>
 #include <net/socket.h>
 #include <kernel.h>
 #include <net/net_app.h>
@@ -32,14 +37,37 @@
 #define NUM_FDS 5
 #endif
 
+#define PORT 4242
+
 /* Number of simultaneous client connections will be NUM_FDS be minus 2 */
 struct pollfd pollfds[NUM_FDS];
 int pollnum;
 
-static void nonblock(int fd)
+#define fatal(msg, ...) { \
+		printf("Error: " msg "\n", ##__VA_ARGS__); \
+		exit(1); \
+	}
+
+
+static void setblocking(int fd, bool val)
 {
-	int fl = fcntl(fd, F_GETFL, 0);
-	fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+	int fl, res;
+
+	fl = fcntl(fd, F_GETFL, 0);
+	if (fl == -1) {
+		fatal("fcntl(F_GETFL): %d", errno);
+	}
+
+	if (val) {
+		fl &= ~O_NONBLOCK;
+	} else {
+		fl |= O_NONBLOCK;
+	}
+
+	res = fcntl(fd, F_SETFL, fl);
+	if (fl == -1) {
+		fatal("fcntl(F_SETFL): %d", errno);
+	}
 }
 
 int pollfds_add(int fd)
@@ -81,14 +109,14 @@ int main(void)
 	int serv4, serv6;
 	struct sockaddr_in bind_addr4 = {
 		.sin_family = AF_INET,
-		.sin_port = htons(4242),
+		.sin_port = htons(PORT),
 		.sin_addr = {
 			.s_addr = htonl(INADDR_ANY),
 		},
 	};
 	struct sockaddr_in6 bind_addr6 = {
 		.sin6_family = AF_INET6,
-		.sin6_port = htons(4242),
+		.sin6_port = htons(PORT),
 		.sin6_addr = IN6ADDR_ANY_INIT,
 	};
 
@@ -111,15 +139,15 @@ int main(void)
 		printf("Cannot bind IPv6, errno: %d\n", errno);
 	}
 
-	nonblock(serv4);
-	nonblock(serv6);
+	setblocking(serv4, false);
+	setblocking(serv6, false);
 	listen(serv4, 5);
 	listen(serv6, 5);
 
 	pollfds_add(serv4);
 	pollfds_add(serv6);
 
-	printf("Listening on port 4242...\n");
+	printf("Asynchronous TCP echo server waits for connections on port %d...\n", PORT);
 
 	while (1) {
 		struct sockaddr_storage client_addr;
@@ -152,18 +180,43 @@ int main(void)
 					send(client, msg, sizeof(msg) - 1, 0);
 					close(client);
 				} else {
-					nonblock(client);
+					setblocking(client, false);
 				}
 			} else {
 				char buf[128];
 				int len = recv(fd, buf, sizeof(buf), 0);
-				if (len == 0) {
+				if (len <= 0) {
+					if (len < 0) {
+						printf("error: recv: %d\n", errno);
+					}
+error:
 					pollfds_del(fd);
 					close(fd);
 					printf("Connection fd=%d closed\n", fd);
 				} else {
-					/* We assume this won't be short write, d'oh */
-					send(fd, buf, len, 0);
+					int out_len;
+					const char *p;
+					/* We implement semi-async server,
+					 * where reads are async, but writes
+					 * *can* be sync (blocking). Note that
+					 * in majority of cases they expected
+					 * to not block, but to be robust, we
+					 * handle all possibilities.
+					 */
+					setblocking(fd, true);
+
+					for (p = buf; len; len -= out_len) {
+						out_len = send(fd, p, len, 0);
+						if (out_len < 0) {
+							printf("error: "
+							       "send: %d\n",
+							       errno);
+							goto error;
+						}
+						p += out_len;
+					}
+
+					setblocking(fd, false);
 				}
 			}
 		}

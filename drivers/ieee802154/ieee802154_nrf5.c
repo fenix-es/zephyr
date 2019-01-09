@@ -6,24 +6,30 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define SYS_LOG_LEVEL CONFIG_SYS_LOG_IEEE802154_DRIVER_LEVEL
-#define SYS_LOG_DOMAIN "dev/nrf5_802154"
-#include <logging/sys_log.h>
+#define LOG_MODULE_NAME ieee802154_nrf5
+#define LOG_LEVEL CONFIG_IEEE802154_DRIVER_LOG_LEVEL
+
+#include <logging/log.h>
+LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
 #include <errno.h>
 
 #include <kernel.h>
 #include <arch/cpu.h>
 
-#include <board.h>
+#include <soc.h>
 #include <device.h>
 #include <init.h>
 #include <net/net_if.h>
 #include <net/net_pkt.h>
 
+#if defined(CONFIG_NET_L2_OPENTHREAD)
+#include <net/openthread.h>
+#endif
+
 #include <misc/byteorder.h>
 #include <string.h>
-#include <rand32.h>
+#include <random/rand32.h>
 
 #include <net/ieee802154_radio.h>
 #include <drivers/clock_control/nrf5_clock_control.h>
@@ -38,6 +44,8 @@ struct nrf5_802154_config {
 };
 
 static struct nrf5_802154_data nrf5_data;
+
+#define ACK_TIMEOUT K_MSEC(10)
 
 /* Convenience defines for RADIO */
 #define NRF5_802154_DATA(dev) \
@@ -56,7 +64,6 @@ static void nrf5_rx_thread(void *arg1, void *arg2, void *arg3)
 	struct device *dev = (struct device *)arg1;
 	struct nrf5_802154_data *nrf5_radio = NRF5_802154_DATA(dev);
 	struct net_buf *frag = NULL;
-	enum net_verdict ack_result;
 	struct net_pkt *pkt;
 	u8_t pkt_len;
 
@@ -66,27 +73,20 @@ static void nrf5_rx_thread(void *arg1, void *arg2, void *arg3)
 	while (1) {
 		pkt = NULL;
 
-		SYS_LOG_DBG("Waiting for frame");
+		LOG_DBG("Waiting for frame");
 		k_sem_take(&nrf5_radio->rx_wait, K_FOREVER);
 
-		SYS_LOG_DBG("Frame received");
+		LOG_DBG("Frame received");
 
-		pkt = net_pkt_get_reserve_rx(0, K_NO_WAIT);
+		pkt = net_pkt_get_reserve_rx(K_NO_WAIT);
 		if (!pkt) {
-			SYS_LOG_ERR("No pkt available");
+			LOG_ERR("No pkt available");
 			goto out;
 		}
 
-#if defined(CONFIG_IEEE802154_NRF5_RAW)
-		/**
-		 * Reserve 1 byte for length
-		 */
-		net_pkt_set_ll_reserve(pkt, 1);
-#endif
-
 		frag = net_pkt_get_frag(pkt, K_NO_WAIT);
 		if (!frag) {
-			SYS_LOG_ERR("No frag available");
+			LOG_ERR("No frag available");
 			goto out;
 		}
 
@@ -96,11 +96,13 @@ static void nrf5_rx_thread(void *arg1, void *arg2, void *arg3)
 		 * The last 2 bytes contain LQI or FCS, depending if
 		 * automatic CRC handling is enabled or not, respectively.
 		 */
-#if defined(CONFIG_IEEE802154_NRF5_RAW)
-		pkt_len = nrf5_radio->rx_psdu[0];
-#else
-		pkt_len = nrf5_radio->rx_psdu[0] -  NRF5_FCS_LENGTH;
-#endif
+		if (IS_ENABLED(CONFIG_IEEE802154_RAW_MODE) ||
+		    IS_ENABLED(CONFIG_NET_L2_OPENTHREAD)) {
+
+			pkt_len = nrf5_radio->rx_psdu[0];
+		} else {
+			pkt_len = nrf5_radio->rx_psdu[0] -  NRF5_FCS_LENGTH;
+		}
 
 		/* Skip length (first byte) and copy the payload */
 		memcpy(frag->data, nrf5_radio->rx_psdu + 1, pkt_len);
@@ -111,24 +113,21 @@ static void nrf5_rx_thread(void *arg1, void *arg2, void *arg3)
 
 		nrf_drv_radio802154_buffer_free(nrf5_radio->rx_psdu);
 
-		ack_result = ieee802154_radio_handle_ack(nrf5_radio->iface,
-							 pkt);
-		if (ack_result == NET_OK) {
-			SYS_LOG_DBG("ACK packet handled");
-			goto out;
-		}
-
-		SYS_LOG_DBG("Caught a packet (%u) (LQI: %u)",
+		LOG_DBG("Caught a packet (%u) (LQI: %u)",
 			    pkt_len, nrf5_radio->lqi);
 
 		if (net_recv_data(nrf5_radio->iface, pkt) < 0) {
-			SYS_LOG_DBG("Packet dropped by NET stack");
+			LOG_DBG("Packet dropped by NET stack");
 			goto out;
 		}
 
-		net_analyze_stack("nRF5 rx stack",
-				  K_THREAD_STACK_BUFFER(nrf5_radio->rx_stack),
-				  K_THREAD_STACK_SIZEOF(nrf5_radio->rx_stack));
+		if (CONFIG_IEEE802154_DRIVER_LOG_LEVEL >= LOG_LEVEL_DBG) {
+			net_analyze_stack(
+				"nRF5 rx stack",
+				K_THREAD_STACK_BUFFER(nrf5_radio->rx_stack),
+				K_THREAD_STACK_SIZEOF(nrf5_radio->rx_stack));
+		}
+
 		continue;
 
 out:
@@ -144,6 +143,7 @@ static enum ieee802154_hw_caps nrf5_get_capabilities(struct device *dev)
 {
 	return IEEE802154_HW_FCS |
 		IEEE802154_HW_2_4_GHZ |
+		IEEE802154_HW_TX_RX_ACK |
 		IEEE802154_HW_FILTER;
 }
 
@@ -164,7 +164,7 @@ static int nrf5_cca(struct device *dev)
 	 * the ED function is done, thus unlocking the semaphore.
 	 */
 	k_sem_take(&nrf5_radio->cca_wait, K_FOREVER);
-	SYS_LOG_DBG("CCA: %d", nrf5_radio->channel_ed);
+	LOG_DBG("CCA: %d", nrf5_radio->channel_ed);
 
 	if (nrf5_radio->channel_ed > CONFIG_IEEE802154_NRF5_CCA_ED_THRESHOLD) {
 		return -EBUSY;
@@ -177,7 +177,7 @@ static int nrf5_set_channel(struct device *dev, u16_t channel)
 {
 	struct nrf5_802154_data *nrf5_radio = NRF5_802154_DATA(dev);
 
-	SYS_LOG_DBG("%u", channel);
+	LOG_DBG("%u", channel);
 
 	if (channel < 11 || channel > 26) {
 		return -EINVAL;
@@ -200,7 +200,7 @@ static int nrf5_set_pan_id(struct device *dev, u16_t pan_id)
 	sys_put_le16(pan_id, pan_id_le);
 	nrf_drv_radio802154_pan_id_set(pan_id_le);
 
-	SYS_LOG_DBG("0x%x", pan_id);
+	LOG_DBG("0x%x", pan_id);
 	return 0;
 }
 
@@ -213,7 +213,7 @@ static int nrf5_set_short_addr(struct device *dev, u16_t short_addr)
 	sys_put_le16(short_addr, short_addr_le);
 	nrf_drv_radio802154_short_address_set(short_addr_le);
 
-	SYS_LOG_DBG("0x%x", short_addr);
+	LOG_DBG("0x%x", short_addr);
 	return 0;
 }
 
@@ -221,7 +221,7 @@ static int nrf5_set_ieee_addr(struct device *dev, const u8_t *ieee_addr)
 {
 	ARG_UNUSED(dev);
 
-	SYS_LOG_DBG("IEEE address %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+	LOG_DBG("IEEE address %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
 		    ieee_addr[7], ieee_addr[6], ieee_addr[5], ieee_addr[4],
 		    ieee_addr[3], ieee_addr[2], ieee_addr[1], ieee_addr[0]);
 
@@ -230,11 +230,16 @@ static int nrf5_set_ieee_addr(struct device *dev, const u8_t *ieee_addr)
 	return 0;
 }
 
-static int nrf5_set_filter(struct device *dev,
-			   enum ieee802154_filter_type type,
-			   const struct ieee802154_filter *filter)
+static int nrf5_filter(struct device *dev,
+		       bool set,
+		       enum ieee802154_filter_type type,
+		       const struct ieee802154_filter *filter)
 {
-	SYS_LOG_DBG("Applying filter %u", type);
+	LOG_DBG("Applying filter %u", type);
+
+	if (!set) {
+		return -ENOTSUP;
+	}
 
 	if (type == IEEE802154_FILTER_TYPE_IEEE_ADDR) {
 		return nrf5_set_ieee_addr(dev, filter->ieee_addr);
@@ -244,14 +249,14 @@ static int nrf5_set_filter(struct device *dev,
 		return nrf5_set_pan_id(dev, filter->pan_id);
 	}
 
-	return -EINVAL;
+	return -ENOTSUP;
 }
 
 static int nrf5_set_txpower(struct device *dev, s16_t dbm)
 {
 	struct nrf5_802154_data *nrf5_radio = NRF5_802154_DATA(dev);
 
-	SYS_LOG_DBG("%d", dbm);
+	LOG_DBG("%d", dbm);
 	nrf5_radio->txpower = dbm;
 
 	return 0;
@@ -262,35 +267,39 @@ static int nrf5_tx(struct device *dev,
 		   struct net_buf *frag)
 {
 	struct nrf5_802154_data *nrf5_radio = NRF5_802154_DATA(dev);
-	u8_t payload_len = net_pkt_ll_reserve(pkt) + frag->len;
-	u8_t *payload = frag->data - net_pkt_ll_reserve(pkt);
+	u8_t payload_len = frag->len;
+	u8_t *payload = frag->data;
 
-	SYS_LOG_DBG("%p (%u)", payload, payload_len);
+	LOG_DBG("%p (%u)", payload, payload_len);
 
 	nrf5_radio->tx_success = false;
 	nrf5_radio->tx_psdu[0] = payload_len + NRF5_FCS_LENGTH;
 
 	memcpy(nrf5_radio->tx_psdu + 1, payload, payload_len);
 
+	/* Reset semaphore in case ACK was received after timeout */
+	k_sem_reset(&nrf5_radio->tx_wait);
+
 	if (!nrf_drv_radio802154_transmit(nrf5_radio->tx_psdu,
 					  nrf5_radio->channel,
 					  nrf5_radio->txpower)) {
-		SYS_LOG_ERR("Cannot send frame");
+		LOG_ERR("Cannot send frame");
 		return -EIO;
 	}
 
-	SYS_LOG_DBG("Sending frame (ch:%d, txpower:%d)",
+	LOG_DBG("Sending frame (ch:%d, txpower:%d)",
 		    nrf5_radio->channel,
 		    nrf5_radio->txpower);
 
-	/* The nRF driver guarantees that either
-	 * nrf_drv_radio802154_transmitted() or
-	 * nrf_drv_radio802154_energy_detected()
-	 * callback is called, thus unlocking the semaphore.
-	 */
-	k_sem_take(&nrf5_radio->tx_wait, K_FOREVER);
+	/* Wait for ack to be received */
+	if (k_sem_take(&nrf5_radio->tx_wait, ACK_TIMEOUT)) {
+		LOG_DBG("ACK not received");
+		nrf_drv_radio802154_receive(nrf5_radio->channel, true);
 
-	SYS_LOG_DBG("Result: %d", nrf5_data.tx_success);
+		return -EIO;
+	}
+
+	LOG_DBG("Result: %d", nrf5_data.tx_success);
 
 	return nrf5_radio->tx_success ? 0 : -EBUSY;
 }
@@ -300,7 +309,7 @@ static int nrf5_start(struct device *dev)
 	struct nrf5_802154_data *nrf5_radio = NRF5_802154_DATA(dev);
 
 	nrf_drv_radio802154_receive(nrf5_radio->channel, false);
-	SYS_LOG_DBG("nRF5 802154 radio started (channel: %d)",
+	LOG_DBG("nRF5 802154 radio started (channel: %d)",
 		    nrf5_radio->channel);
 
 	return 0;
@@ -311,11 +320,11 @@ static int nrf5_stop(struct device *dev)
 	ARG_UNUSED(dev);
 
 	if (!nrf_drv_radio802154_sleep()) {
-		SYS_LOG_ERR("Error while stopping radio");
+		LOG_ERR("Error while stopping radio");
 		return -EIO;
 	}
 
-	SYS_LOG_DBG("nRF5 802154 radio stopped");
+	LOG_DBG("nRF5 802154 radio stopped");
 
 	return 0;
 }
@@ -361,7 +370,7 @@ static int nrf5_init(struct device *dev)
 			nrf5_rx_thread, dev, NULL, NULL,
 			K_PRIO_COOP(2), 0, 0);
 
-	SYS_LOG_INF("nRF5 802154 radio initialized");
+	LOG_INF("nRF5 802154 radio initialized");
 
 	return 0;
 }
@@ -371,7 +380,7 @@ static void nrf5_iface_init(struct net_if *iface)
 	struct device *dev = net_if_get_device(iface);
 	struct nrf5_802154_data *nrf5_radio = NRF5_802154_DATA(dev);
 
-	SYS_LOG_DBG("");
+	LOG_DBG("");
 
 	nrf5_get_eui64(nrf5_radio->mac);
 	net_if_set_link_addr(iface,
@@ -419,32 +428,41 @@ static const struct nrf5_802154_config nrf5_radio_cfg = {
 
 static struct ieee802154_radio_api nrf5_radio_api = {
 	.iface_api.init = nrf5_iface_init,
-	.iface_api.send = ieee802154_radio_send,
 
 	.get_capabilities = nrf5_get_capabilities,
 	.cca = nrf5_cca,
 	.set_channel = nrf5_set_channel,
-	.set_filter = nrf5_set_filter,
+	.filter = nrf5_filter,
 	.set_txpower = nrf5_set_txpower,
 	.start = nrf5_start,
 	.stop = nrf5_stop,
 	.tx = nrf5_tx,
 };
 
-#if defined(CONFIG_IEEE802154_NRF5_RAW)
-DEVICE_AND_API_INIT(nrf5_154_radio, CONFIG_IEEE802154_NRF5_DRV_NAME,
-		    nrf5_init, &nrf5_data, &nrf5_radio_cfg,
-		    POST_KERNEL, CONFIG_IEEE802154_NRF5_INIT_PRIO,
-		    &nrf5_radio_api);
-#else
+#if defined(CONFIG_NET_L2_IEEE802154)
+#define L2 IEEE802154_L2
+#define L2_CTX_TYPE NET_L2_GET_CTX_TYPE(IEEE802154_L2)
+#define MTU 125
+#elif defined(CONFIG_NET_L2_OPENTHREAD)
+#define L2 OPENTHREAD_L2
+#define L2_CTX_TYPE NET_L2_GET_CTX_TYPE(OPENTHREAD_L2)
+#define MTU 1280
+#endif
+
+#if defined(CONFIG_NET_L2_IEEE802154) || defined(CONFIG_NET_L2_OPENTHREAD)
 NET_DEVICE_INIT(nrf5_154_radio, CONFIG_IEEE802154_NRF5_DRV_NAME,
 		nrf5_init, &nrf5_data, &nrf5_radio_cfg,
 		CONFIG_IEEE802154_NRF5_INIT_PRIO,
-		&nrf5_radio_api, IEEE802154_L2,
-		NET_L2_GET_CTX_TYPE(IEEE802154_L2), 125);
+		&nrf5_radio_api, L2,
+		L2_CTX_TYPE, MTU);
 
 NET_STACK_INFO_ADDR(RX, nrf5_154_radio,
 		    CONFIG_IEEE802154_NRF5_RX_STACK_SIZE,
 		    CONFIG_IEEE802154_NRF5_RX_STACK_SIZE,
 		    nrf5_data.rx_stack, 0);
+#else
+DEVICE_AND_API_INIT(nrf5_154_radio, CONFIG_IEEE802154_NRF5_DRV_NAME,
+		    nrf5_init, &nrf5_data, &nrf5_radio_cfg,
+		    POST_KERNEL, CONFIG_IEEE802154_NRF5_INIT_PRIO,
+		    &nrf5_radio_api);
 #endif

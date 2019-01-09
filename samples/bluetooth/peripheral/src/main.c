@@ -14,6 +14,8 @@
 #include <misc/byteorder.h>
 #include <zephyr.h>
 
+#include <settings/settings.h>
+
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/conn.h>
@@ -21,12 +23,8 @@
 #include <bluetooth/gatt.h>
 
 #include <gatt/hrs.h>
-#include <gatt/dis.h>
 #include <gatt/bas.h>
 #include <gatt/cts.h>
-
-#define DEVICE_NAME		CONFIG_BT_DEVICE_NAME
-#define DEVICE_NAME_LEN		(sizeof(DEVICE_NAME) - 1)
 
 /* Custom Service Variables */
 static struct bt_uuid_128 vnd_uuid = BT_UUID_INIT_128(
@@ -81,7 +79,7 @@ static void indicate_cb(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			u8_t err)
 {
 	printk("Indication %s\n", err != 0 ? "fail" : "success");
-	indicating = 0;
+	indicating = 0U;
 }
 
 #define MAX_DATA 74
@@ -161,36 +159,63 @@ static const struct bt_uuid_128 vnd_signed_uuid = BT_UUID_INIT_128(
 	0xf3, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x13,
 	0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x13);
 
+static const struct bt_uuid_128 vnd_write_cmd_uuid = BT_UUID_INIT_128(
+	0xf4, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12,
+	0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12);
+
+static ssize_t write_without_rsp_vnd(struct bt_conn *conn,
+				     const struct bt_gatt_attr *attr,
+				     const void *buf, u16_t len, u16_t offset,
+				     u8_t flags)
+{
+	u8_t *value = attr->user_data;
+
+	/* Write request received. Reject it since this char only accepts
+	 * Write Commands.
+	 */
+	if (!(flags & BT_GATT_WRITE_FLAG_CMD)) {
+		return BT_GATT_ERR(BT_ATT_ERR_WRITE_REQ_REJECTED);
+	}
+
+	if (offset + len > sizeof(vnd_value)) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+	}
+
+	memcpy(value + offset, buf, len);
+
+	return len;
+}
+
 /* Vendor Primary Service Declaration */
 static struct bt_gatt_attr vnd_attrs[] = {
 	/* Vendor Primary Service Declaration */
 	BT_GATT_PRIMARY_SERVICE(&vnd_uuid),
 	BT_GATT_CHARACTERISTIC(&vnd_enc_uuid.uuid,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE |
-			       BT_GATT_CHRC_INDICATE),
-	BT_GATT_DESCRIPTOR(&vnd_enc_uuid.uuid,
-			   BT_GATT_PERM_READ_ENCRYPT |
-			   BT_GATT_PERM_WRITE_ENCRYPT,
-			   read_vnd, write_vnd, vnd_value),
+			       BT_GATT_CHRC_INDICATE,
+			       BT_GATT_PERM_READ_ENCRYPT |
+			       BT_GATT_PERM_WRITE_ENCRYPT,
+			       read_vnd, write_vnd, vnd_value),
 	BT_GATT_CCC(vnd_ccc_cfg, vnd_ccc_cfg_changed),
 	BT_GATT_CHARACTERISTIC(&vnd_auth_uuid.uuid,
-			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE),
-	BT_GATT_DESCRIPTOR(&vnd_auth_uuid.uuid,
-			   BT_GATT_PERM_READ_AUTHEN |
-			   BT_GATT_PERM_WRITE_AUTHEN,
-			   read_vnd, write_vnd, vnd_value),
+			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
+			       BT_GATT_PERM_READ_AUTHEN |
+			       BT_GATT_PERM_WRITE_AUTHEN,
+			       read_vnd, write_vnd, vnd_value),
 	BT_GATT_CHARACTERISTIC(&vnd_long_uuid.uuid, BT_GATT_CHRC_READ |
-			       BT_GATT_CHRC_WRITE | BT_GATT_CHRC_EXT_PROP),
-	BT_GATT_DESCRIPTOR(&vnd_long_uuid.uuid,
-			   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE |
-			   BT_GATT_PERM_PREPARE_WRITE,
-			   read_long_vnd, write_long_vnd, &vnd_long_value),
+			       BT_GATT_CHRC_WRITE | BT_GATT_CHRC_EXT_PROP,
+			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE |
+			       BT_GATT_PERM_PREPARE_WRITE,
+			       read_long_vnd, write_long_vnd, &vnd_long_value),
 	BT_GATT_CEP(&vnd_long_cep),
 	BT_GATT_CHARACTERISTIC(&vnd_signed_uuid.uuid, BT_GATT_CHRC_READ |
-			       BT_GATT_CHRC_WRITE | BT_GATT_CHRC_AUTH),
-	BT_GATT_DESCRIPTOR(&vnd_signed_uuid.uuid,
-			   BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
-			   read_signed, write_signed, &signed_value),
+			       BT_GATT_CHRC_WRITE | BT_GATT_CHRC_AUTH,
+			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+			       read_signed, write_signed, &signed_value),
+	BT_GATT_CHARACTERISTIC(&vnd_write_cmd_uuid.uuid,
+			       BT_GATT_CHRC_WRITE_WITHOUT_RESP,
+			       BT_GATT_PERM_WRITE, NULL,
+			       write_without_rsp_vnd, &vnd_value),
 };
 
 static struct bt_gatt_service vnd_svc = BT_GATT_SERVICE(vnd_attrs);
@@ -202,10 +227,6 @@ static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_UUID128_ALL,
 		      0xf0, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12,
 		      0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12),
-};
-
-static const struct bt_data sd[] = {
-	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
 };
 
 static void connected(struct bt_conn *conn, u8_t err)
@@ -239,11 +260,13 @@ static void bt_ready(int err)
 	hrs_init(0x01);
 	bas_init();
 	cts_init();
-	dis_init(CONFIG_SOC, "Manufacturer");
 	bt_gatt_service_register(&vnd_svc);
 
-	err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad),
-			      sd, ARRAY_SIZE(sd));
+	if (IS_ENABLED(CONFIG_SETTINGS)) {
+		settings_load();
+	}
+
+	err = bt_le_adv_start(BT_LE_ADV_CONN_NAME, ad, ARRAY_SIZE(ad), NULL, 0);
 	if (err) {
 		printk("Advertising failed to start (err %d)\n", err);
 		return;
@@ -316,7 +339,7 @@ void main(void)
 			ind_params.len = sizeof(indicating);
 
 			if (bt_gatt_indicate(NULL, &ind_params) == 0) {
-				indicating = 1;
+				indicating = 1U;
 			}
 		}
 	}

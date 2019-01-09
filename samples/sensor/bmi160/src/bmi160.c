@@ -191,7 +191,7 @@ static void print_temp_data(struct device *bmi160)
 	struct sensor_value val;
 	char buf[18];
 
-	if (sensor_channel_get(bmi160, SENSOR_CHAN_TEMP, &val) < 0) {
+	if (sensor_channel_get(bmi160, SENSOR_CHAN_DIE_TEMP, &val) < 0) {
 		printk("Temperature channel read error.\n");
 		return;
 	}
@@ -417,7 +417,7 @@ void main(void)
 #endif
 
 	printk("IMU: Binding...\n");
-	bmi160 = device_get_binding(CONFIG_BMI160_NAME);
+	bmi160 = device_get_binding(DT_BMI160_NAME);
 	if (!bmi160) {
 		printk("Gyro: Device not found.\n");
 		return;

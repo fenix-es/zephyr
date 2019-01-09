@@ -2,8 +2,6 @@
   ******************************************************************************
   * @file    stm32f4xx_hal_i2c.h
   * @author  MCD Application Team
-  * @version V1.7.1
-  * @date    14-April-2017
   * @brief   Header file of I2C HAL module.
   ******************************************************************************
   * @attention
@@ -58,7 +56,7 @@
 /** @defgroup I2C_Exported_Types I2C Exported Types
   * @{
   */
-   
+
 /**
   * @brief  I2C Configuration Structure definition
   */
@@ -93,7 +91,7 @@ typedef struct
 /**
   * @brief  HAL State structure definition
   * @note  HAL I2C State value coding follow below described bitmap :
-  *          b7-b6  Error information 
+  *          b7-b6  Error information
   *             00 : No Error
   *             01 : Abort (Abort user request on going)
   *             10 : Timeout
@@ -166,30 +164,30 @@ typedef enum
 typedef struct
 {
   I2C_TypeDef                *Instance;      /*!< I2C registers base address               */
-                                             
+
   I2C_InitTypeDef            Init;           /*!< I2C communication parameters             */
-                                             
+
   uint8_t                    *pBuffPtr;      /*!< Pointer to I2C transfer buffer           */
-                                             
+
   uint16_t                   XferSize;       /*!< I2C transfer size                        */
-                                             
+
   __IO uint16_t              XferCount;      /*!< I2C transfer counter                     */
-                                             
+
   __IO uint32_t              XferOptions;    /*!< I2C transfer options                     */
-                                             
+
   __IO uint32_t              PreviousState;  /*!< I2C communication Previous state and mode
                                                   context for internal usage               */
-                                             
+
   DMA_HandleTypeDef          *hdmatx;        /*!< I2C Tx DMA handle parameters             */
-                                             
+
   DMA_HandleTypeDef          *hdmarx;        /*!< I2C Rx DMA handle parameters             */
-                                             
+
   HAL_LockTypeDef            Lock;           /*!< I2C locking object                       */
-                                             
+
   __IO HAL_I2C_StateTypeDef  State;          /*!< I2C communication state                  */
-                                             
+
   __IO HAL_I2C_ModeTypeDef   Mode;           /*!< I2C communication mode                   */
-                                             
+
   __IO uint32_t              ErrorCode;      /*!< I2C Error code                           */
 
   __IO uint32_t              Devaddress;     /*!< I2C Target device address                */
@@ -212,9 +210,9 @@ typedef struct
   */
 
 /** @defgroup I2C_Error_Code I2C Error Code
-  * @brief    I2C Error Code 
+  * @brief    I2C Error Code
   * @{
-  */ 
+  */
 #define HAL_I2C_ERROR_NONE       0x00000000U    /*!< No error           */
 #define HAL_I2C_ERROR_BERR       0x00000001U    /*!< BERR error         */
 #define HAL_I2C_ERROR_ARLO       0x00000002U    /*!< ARLO error         */
@@ -283,7 +281,7 @@ typedef struct
 /** @defgroup I2C_XferDirection_definition I2C XferDirection definition
   * @{
   */
-#define I2C_DIRECTION_RECEIVE           0x00000000U 
+#define I2C_DIRECTION_RECEIVE           0x00000000U
 #define I2C_DIRECTION_TRANSMIT          0x00000001U
 /**
   * @}
@@ -348,16 +346,16 @@ typedef struct
   */
 
 /** @brief Reset I2C handle state
-  * @param  __HANDLE__: specifies the I2C Handle.
+  * @param  __HANDLE__ specifies the I2C Handle.
   *         This parameter can be I2C where x: 1, 2, or 3 to select the I2C peripheral.
   * @retval None
   */
 #define __HAL_I2C_RESET_HANDLE_STATE(__HANDLE__) ((__HANDLE__)->State = HAL_I2C_STATE_RESET)
 
 /** @brief  Enable or disable the specified I2C interrupts.
-  * @param  __HANDLE__: specifies the I2C Handle.
+  * @param  __HANDLE__ specifies the I2C Handle.
   *         This parameter can be I2C where x: 1, 2, or 3 to select the I2C peripheral.
-  * @param  __INTERRUPT__: specifies the interrupt source to enable or disable.
+  * @param  __INTERRUPT__ specifies the interrupt source to enable or disable.
   *         This parameter can be one of the following values:
   *            @arg I2C_IT_BUF: Buffer interrupt enable
   *            @arg I2C_IT_EVT: Event interrupt enable
@@ -368,9 +366,9 @@ typedef struct
 #define __HAL_I2C_DISABLE_IT(__HANDLE__, __INTERRUPT__)  ((__HANDLE__)->Instance->CR2 &= (~(__INTERRUPT__)))
 
 /** @brief  Checks if the specified I2C interrupt source is enabled or disabled.
-  * @param  __HANDLE__: specifies the I2C Handle.
+  * @param  __HANDLE__ specifies the I2C Handle.
   *         This parameter can be I2C where x: 1, 2, or 3 to select the I2C peripheral.
-  * @param  __INTERRUPT__: specifies the I2C interrupt source to check.
+  * @param  __INTERRUPT__ specifies the I2C interrupt source to check.
   *          This parameter can be one of the following values:
   *            @arg I2C_IT_BUF: Buffer interrupt enable
   *            @arg I2C_IT_EVT: Event interrupt enable
@@ -380,9 +378,9 @@ typedef struct
 #define __HAL_I2C_GET_IT_SOURCE(__HANDLE__, __INTERRUPT__) ((((__HANDLE__)->Instance->CR2 & (__INTERRUPT__)) == (__INTERRUPT__)) ? SET : RESET)
 
 /** @brief  Checks whether the specified I2C flag is set or not.
-  * @param  __HANDLE__: specifies the I2C Handle.
+  * @param  __HANDLE__ specifies the I2C Handle.
   *         This parameter can be I2C where x: 1, 2, or 3 to select the I2C peripheral.
-  * @param  __FLAG__: specifies the flag to check.
+  * @param  __FLAG__ specifies the flag to check.
   *         This parameter can be one of the following values:
   *            @arg I2C_FLAG_SMBALERT: SMBus Alert flag
   *            @arg I2C_FLAG_TIMEOUT: Timeout or Tlow error flag
@@ -412,9 +410,9 @@ typedef struct
                                                  ((((__HANDLE__)->Instance->SR2) & ((__FLAG__) & I2C_FLAG_MASK)) == ((__FLAG__) & I2C_FLAG_MASK)))
 
 /** @brief  Clears the I2C pending flags which are cleared by writing 0 in a specific bit.
-  * @param  __HANDLE__: specifies the I2C Handle.
+  * @param  __HANDLE__ specifies the I2C Handle.
   *         This parameter can be I2C where x: 1, 2, or 3 to select the I2C peripheral.
-  * @param  __FLAG__: specifies the flag to clear.
+  * @param  __FLAG__ specifies the flag to clear.
   *         This parameter can be any combination of the following values:
   *            @arg I2C_FLAG_SMBALERT: SMBus Alert flag
   *            @arg I2C_FLAG_TIMEOUT: Timeout or Tlow error flag
@@ -428,7 +426,7 @@ typedef struct
 #define __HAL_I2C_CLEAR_FLAG(__HANDLE__, __FLAG__) ((__HANDLE__)->Instance->SR1 = ~((__FLAG__) & I2C_FLAG_MASK))
 
 /** @brief  Clears the I2C ADDR pending flag.
-  * @param  __HANDLE__: specifies the I2C Handle.
+  * @param  __HANDLE__ specifies the I2C Handle.
   *         This parameter can be I2C where x: 1, 2, or 3 to select the I2C peripheral.
   * @retval None
   */
@@ -441,7 +439,7 @@ typedef struct
   } while(0)
 
 /** @brief  Clears the I2C STOPF pending flag.
-  * @param  __HANDLE__: specifies the I2C Handle.
+  * @param  __HANDLE__ specifies the I2C Handle.
   *         This parameter can be I2C where x: 1, 2, or 3 to select the I2C peripheral.
   * @retval None
   */
@@ -452,16 +450,16 @@ typedef struct
     (__HANDLE__)->Instance->CR1 |= I2C_CR1_PE;  \
     UNUSED(tmpreg);                             \
   } while(0)
-    
+
 /** @brief  Enable the I2C peripheral.
-  * @param  __HANDLE__: specifies the I2C Handle.
+  * @param  __HANDLE__ specifies the I2C Handle.
   *         This parameter can be I2Cx where x: 1 or 2  to select the I2C peripheral.
   * @retval None
   */
 #define __HAL_I2C_ENABLE(__HANDLE__)                             ((__HANDLE__)->Instance->CR1 |=  I2C_CR1_PE)
 
 /** @brief  Disable the I2C peripheral.
-  * @param  __HANDLE__: specifies the I2C Handle.
+  * @param  __HANDLE__ specifies the I2C Handle.
   *         This parameter can be I2Cx where x: 1 or 2  to select the I2C peripheral.
   * @retval None
   */
@@ -575,7 +573,7 @@ uint32_t HAL_I2C_GetError(I2C_HandleTypeDef *hi2c);
 /** @defgroup I2C_Private_Macros I2C Private Macros
   * @{
   */
-    
+
 #define I2C_FREQRANGE(__PCLK__)                            ((__PCLK__)/1000000U)
 #define I2C_RISE_TIME(__FREQRANGE__, __SPEED__)            (((__SPEED__) <= 100000U) ? ((__FREQRANGE__) + 1U) : ((((__FREQRANGE__) * 300U) / 1000U) + 1U))
 #define I2C_SPEED_STANDARD(__PCLK__, __SPEED__)            (((((__PCLK__)/((__SPEED__) << 1U)) & I2C_CCR_CCR) < 4U)? 4U:((__PCLK__) / ((__SPEED__) << 1U)))

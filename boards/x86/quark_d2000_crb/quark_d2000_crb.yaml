@@ -5,6 +5,7 @@ arch: x86
 toolchain:
   - zephyr
   - issm
+  - xtools
 ram: 8
 flash: 32
 supported:
@@ -15,7 +16,9 @@ supported:
   - aio
   - rtc
   - watchdog
+  - dma
+  - pwm
 testing:
-        ignore_tags:
-          - net
-          - bluetooth
+  ignore_tags:
+     - net
+     - bluetooth

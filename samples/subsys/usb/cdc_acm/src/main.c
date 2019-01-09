@@ -41,24 +41,19 @@ static void interrupt_handler(struct device *dev)
 
 static void write_data(struct device *dev, const char *buf, int len)
 {
-	int sent;
 	uart_irq_tx_enable(dev);
 
 	while (len) {
-		data_transmitted = false;
-		sent = uart_fifo_fill(dev, (const u8_t *)buf, len);
+		int written;
 
-		if (!sent) {
-			printf("Unable to send Data !\n");
-			break;
+		data_transmitted = false;
+		written = uart_fifo_fill(dev, (const u8_t *)buf, len);
+		while (data_transmitted == false) {
+			k_yield();
 		}
 
-		/* Wait until Tx interrupr is generated*/
-		while (data_transmitted == false)
-			;
-		/* Update remainging Data length to transfer*/
-		len -= sent;
-		buf += sent;
+		len -= written;
+		buf += written;
 	}
 
 	uart_irq_tx_disable(dev);
@@ -81,7 +76,7 @@ static void read_and_echo_data(struct device *dev, int *bytes_read)
 void main(void)
 {
 	struct device *dev;
-	u32_t baudrate, bytes_read, dtr = 0;
+	u32_t baudrate, bytes_read, dtr = 0U;
 	int ret;
 
 	dev = device_get_binding(CONFIG_CDC_ACM_PORT_NAME);

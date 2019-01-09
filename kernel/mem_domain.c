@@ -7,31 +7,98 @@
 #include <init.h>
 #include <kernel.h>
 #include <kernel_structs.h>
-#include <nano_internal.h>
-
+#include <kernel_internal.h>
+#include <misc/__assert.h>
+#include <stdbool.h>
 
 static u8_t max_partitions;
 
+#if defined(CONFIG_EXECUTE_XOR_WRITE) && __ASSERT_ON
+static bool sane_partition(const struct k_mem_partition *part,
+			   const struct k_mem_partition *parts,
+			   u32_t num_parts)
+{
+	bool exec, write;
+	u32_t last;
+	u32_t i;
 
-void k_mem_domain_init(struct k_mem_domain *domain, u32_t num_parts,
-		struct k_mem_partition *parts[])
+	last = part->start + part->size - 1;
+	exec = K_MEM_PARTITION_IS_EXECUTABLE(part->attr);
+	write = K_MEM_PARTITION_IS_WRITABLE(part->attr);
+
+	if (exec && write) {
+		__ASSERT(false,
+			"partition is writable and executable <start %x>",
+			 part->start);
+		return false;
+	}
+
+	for (i = 0U; i < num_parts; i++) {
+		bool cur_write, cur_exec;
+		u32_t cur_last;
+
+		cur_last = parts[i].start + parts[i].size - 1;
+
+		if (last < parts[i].start || cur_last < part->start) {
+			continue;
+		}
+
+		cur_write = K_MEM_PARTITION_IS_WRITABLE(parts[i].attr);
+		cur_exec = K_MEM_PARTITION_IS_EXECUTABLE(parts[i].attr);
+
+		if ((cur_write && exec) || (cur_exec && write)) {
+			__ASSERT(false, "overlapping partitions are "
+				 "writable and executable "
+				 "<%x...%x>, <%x...%x>",
+				 part->start, last,
+				 parts[i].start, cur_last);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+static inline bool sane_partition_domain(const struct k_mem_domain *domain,
+					 const struct k_mem_partition *part)
+{
+	return sane_partition(part, domain->partitions,
+			      domain->num_partitions);
+}
+#else
+#define sane_partition(...) (true)
+#define sane_partition_domain(...) (true)
+#endif
+
+void k_mem_domain_init(struct k_mem_domain *domain, u8_t num_parts,
+		       struct k_mem_partition *parts[])
 {
 	unsigned int key;
 
-	__ASSERT(domain && (!num_parts || parts), "");
+	__ASSERT(domain != NULL, "");
+	__ASSERT(num_parts == 0 || parts != NULL, "");
 	__ASSERT(num_parts <= max_partitions, "");
 
 	key = irq_lock();
 
-	domain->num_partitions = num_parts;
-	memset(domain->partitions, 0, sizeof(domain->partitions));
+	domain->num_partitions = 0;
+	(void)memset(domain->partitions, 0, sizeof(domain->partitions));
 
-	if (num_parts) {
+	if (num_parts != 0) {
 		u32_t i;
 
-		for (i = 0; i < num_parts; i++) {
-			__ASSERT(parts[i], "");
+		for (i = 0U; i < num_parts; i++) {
+			__ASSERT(parts[i] != NULL, "");
+			__ASSERT((parts[i]->start + parts[i]->size) >
+				 parts[i]->start, "");
+
+#if defined(CONFIG_EXECUTE_XOR_WRITE)
+			__ASSERT(sane_partition_domain(domain,
+						       parts[i]),
+				 "");
+#endif
 			domain->partitions[i] = *parts[i];
+			domain->num_partitions++;
 		}
 	}
 
@@ -45,9 +112,16 @@ void k_mem_domain_destroy(struct k_mem_domain *domain)
 	unsigned int key;
 	sys_dnode_t *node, *next_node;
 
-	__ASSERT(domain, "");
+	__ASSERT(domain != NULL, "");
 
 	key = irq_lock();
+
+	/* Handle architecture-specific destroy
+	 * only if it is the current thread.
+	 */
+	if (_current->mem_domain_info.mem_domain == domain) {
+		_arch_mem_domain_destroy(domain);
+	}
 
 	SYS_DLIST_FOR_EACH_NODE_SAFE(&domain->mem_domain_q, node, next_node) {
 		struct k_thread *thread =
@@ -61,13 +135,18 @@ void k_mem_domain_destroy(struct k_mem_domain *domain)
 }
 
 void k_mem_domain_add_partition(struct k_mem_domain *domain,
-			       struct k_mem_partition *part)
+				struct k_mem_partition *part)
 {
 	int p_idx;
 	unsigned int key;
 
-	__ASSERT(domain && part, "");
-	__ASSERT(part->start + part->size > part->start, "");
+	__ASSERT(domain != NULL, "");
+	__ASSERT(part != NULL, "");
+	__ASSERT((part->start + part->size) > part->start, "");
+
+#if defined(CONFIG_EXECUTE_XOR_WRITE)
+	__ASSERT(sane_partition_domain(domain, part), "");
+#endif
 
 	key = irq_lock();
 
@@ -96,7 +175,8 @@ void k_mem_domain_remove_partition(struct k_mem_domain *domain,
 	int p_idx;
 	unsigned int key;
 
-	__ASSERT(domain && part, "");
+	__ASSERT(domain != NULL, "");
+	__ASSERT(part != NULL, "");
 
 	key = irq_lock();
 
@@ -111,9 +191,15 @@ void k_mem_domain_remove_partition(struct k_mem_domain *domain,
 	/* Assert if not found */
 	__ASSERT(p_idx < max_partitions, "");
 
-	domain->partitions[p_idx].start = 0;
+	/* Handle architecture-specific remove
+	 * only if it is the current thread.
+	 */
+	if (_current->mem_domain_info.mem_domain == domain) {
+		_arch_mem_domain_partition_remove(domain, p_idx);
+	}
+
+	/* A zero-sized partition denotes it's a free partition */
 	domain->partitions[p_idx].size = 0;
-	domain->partitions[p_idx].attr = 0;
 
 	domain->num_partitions--;
 
@@ -124,13 +210,20 @@ void k_mem_domain_add_thread(struct k_mem_domain *domain, k_tid_t thread)
 {
 	unsigned int key;
 
-	__ASSERT(domain && thread && !thread->mem_domain_info.mem_domain, "");
+	__ASSERT(domain != NULL, "");
+	__ASSERT(thread != NULL, "");
+	__ASSERT(thread->mem_domain_info.mem_domain == NULL,
+		 "mem domain unset");
 
 	key = irq_lock();
 
 	sys_dlist_append(&domain->mem_domain_q,
 			 &thread->mem_domain_info.mem_domain_q_node);
 	thread->mem_domain_info.mem_domain = domain;
+
+	if (_current == thread) {
+		_arch_mem_domain_configure(thread);
+	}
 
 	irq_unlock(key);
 }
@@ -139,9 +232,13 @@ void k_mem_domain_remove_thread(k_tid_t thread)
 {
 	unsigned int key;
 
-	__ASSERT(thread && thread->mem_domain_info.mem_domain, "");
+	__ASSERT(thread != NULL, "");
+	__ASSERT(thread->mem_domain_info.mem_domain != NULL, "mem domain set");
 
 	key = irq_lock();
+	if (_current == thread) {
+		_arch_mem_domain_destroy(thread->mem_domain_info.mem_domain);
+	}
 
 	sys_dlist_remove(&thread->mem_domain_info.mem_domain_q_node);
 	thread->mem_domain_info.mem_domain = NULL;

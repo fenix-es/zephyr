@@ -53,10 +53,14 @@ The USB-KW24D512 board configuration supports the following hardware features:
 +-----------+------------+-------------------------------------+
 | SPI       | on-chip    | spi                                 |
 +-----------+------------+-------------------------------------+
+| WATCHDOG  | on-chip    | watchdog                            |
++-----------+------------+-------------------------------------+
 | UART      | on-chip    | serial port-polling;                |
 |           |            | serial port-interrupt               |
 +-----------+------------+-------------------------------------+
 | FLASH     | on-chip    | soc flash                           |
++-----------+------------+-------------------------------------+
+| USB       | on-chip    | USB device                          |
 +-----------+------------+-------------------------------------+
 
 The default configuration can be found in the defconfig file:
@@ -113,6 +117,14 @@ The KW2xD SoC has three UARTs. One is configured and can be used for the
 console, but it uses the same pins as the JTAG interface and is only
 accessible via the JTAG SWD connector.
 
+USB
+===
+
+The KW2xD SoC has a USB OTG (USBOTG) controller that supports both
+device and host functions. Only USB device function is supported in Zephyr
+at the moment. The USB-KW24D512 board has a USB Type A connector and
+can only be used in device mode.
+
 Programming and Debugging
 *************************
 
@@ -125,23 +137,20 @@ Flashing
 ========
 
 The Segger J-Link firmware does not support command line flashing, therefore
-the ``make flash`` build target is not supported.
+the usual ``flash`` build target is not supported.
 
 Debugging
 =========
 
 This example uses the :ref:`hello_world` sample with the
-:ref:`nxp_opensda_jlink` tools. Use the ``make debug`` build target to build
-your Zephyr application, invoke the J-Link GDB server, attach a GDB client, and
-program your Zephyr application to flash. It will leave you at a gdb prompt.
+:ref:`nxp_opensda_jlink` tools. This builds the Zephyr application,
+invokes the J-Link GDB server, attaches a GDB client, and programs the
+application to flash. It will leave you at a gdb prompt.
 
-.. code-block:: console
-
-   $ cd <zephyr_root_path>
-   $ . zephyr-env.sh
-   $ cd samples/hello_world/
-   $ make BOARD=usb_kw24d512 debug
-
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: usb_kw24d512
+   :goals: debug
 
 In a second terminal, open telnet:
 
@@ -163,19 +172,19 @@ Continue program execution in GDB, then in the telnet terminal you should see:
      Hello World! arm
 
 .. _USB-KW24D512 Website:
-   http://www.nxp.com/products/microcontrollers-and-processors/arm-processors/kinetis-cortex-m-mcus/w-series-wireless-m0-plus-m4/ieee-802.15.4-packet-sniffer-usb-dongle-form-factor:USB-KW24D512
+   https://www.nxp.com/products/processors-and-microcontrollers/arm-based-processors-and-mcus/kinetis-cortex-m-mcus/w-serieswireless-conn.m0-plus-m4/ieee-802.15.4-packet-sniffer-usb-dongle-form-factor:USB-KW24D512
 
 .. _USB-KW24D512 Hardware Reference Manual:
-   http://www.nxp.com/docs/en/reference-manual/USB-KW2XHWRM.pdf
+   https://www.nxp.com/docs/en/reference-manual/USB-KW2XHWRM.pdf
 
 .. _KW2xD Website:
-   http://www.nxp.com/products/wireless-connectivity/2.4-ghz-wireless-solutions/ieee-802.15.4-wireless-mcus/kinetis-kw2xd-2.4-ghz-802.15.4-wireless-radio-microcontroller-mcu-based-on-arm-cortex-m4-core:KW2xD
+   https://www.nxp.com/products/wireless/thread/kinetis-kw2xd-2.4-ghz-802.15.4-wireless-radio-microcontroller-mcu-based-on-arm-cortex-m4-core:KW2xD
 
 .. _KW2xD Datasheet:
-   http://www.nxp.com/docs/en/data-sheet/MKW2xDxxx.pdf
+   https://www.nxp.com/docs/en/data-sheet/MKW2xDxxx.pdf
 
 .. _KW2xD Reference Manual:
-   http://www.nxp.com/docs/en/reference-manual/MKW2xDxxxRM.pdf
+   https://www.nxp.com/docs/en/reference-manual/MKW2xDxxxRM.pdf
 
 .. _Segger J-Link debug probe:
     https://www.segger.com/products/debug-probes/j-link/models/j-link-base/

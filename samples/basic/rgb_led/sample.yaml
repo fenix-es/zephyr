@@ -1,8 +1,8 @@
 sample:
-  description: TBD
-  name: TBD
+  name: RGB LED
 tests:
-  - test:
-      build_only: true
-      platform_whitelist: arduino_101 hexiwear_k64
-      tags: apps
+  test:
+    # The filters below are from DTS
+    filter: RED_PWM_LED_PWM_CONTROLLER
+    tags: drivers pwm
+    depends_on: pwm

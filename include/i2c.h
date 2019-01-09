@@ -9,8 +9,8 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#ifndef __DRIVERS_I2C_H
-#define __DRIVERS_I2C_H
+#ifndef ZEPHYR_INCLUDE_I2C_H_
+#define ZEPHYR_INCLUDE_I2C_H_
 
 /**
  * @brief I2C Interface
@@ -52,11 +52,18 @@ extern "C" {
 #define I2C_SPEED_GET(cfg) 		(((cfg) & I2C_SPEED_MASK) \
 						>> I2C_SPEED_SHIFT)
 
-/** Use 10-bit addressing. */
+/** Use 10-bit addressing. DEPRECATED - Use I2C_MSG_ADDR_10_BITS instead. */
 #define I2C_ADDR_10_BITS		(1 << 0)
 
 /** Controller to act as Master. */
 #define I2C_MODE_MASTER			(1 << 4)
+
+/*
+ * The following #defines are used to configure the I2C slave device
+ */
+
+/** Slave device responds to 10-bit addressing. */
+#define I2C_SLAVE_FLAGS_ADDR_10_BITS	(1 << 0)
 
 /*
  * I2C_MSG_* are I2C Message flags.
@@ -78,6 +85,9 @@ extern "C" {
 /** RESTART I2C transaction for this message. */
 #define I2C_MSG_RESTART			(1 << 2)
 
+/** Use 10-bit addressing for this message. */
+#define I2C_MSG_ADDR_10_BITS		(1 << 3)
+
 /**
  * @brief One I2C Message.
  *
@@ -94,32 +104,72 @@ struct i2c_msg {
 	u8_t		flags;
 };
 
-union __deprecated dev_config {
-	u32_t raw;
-	struct __bits {
-		u32_t        use_10_bit_addr : 1;
-		u32_t        speed : 3;
-		u32_t        is_master_device : 1;
-		u32_t        reserved : 26;
-	} bits;
-};
-
 /**
  * @cond INTERNAL_HIDDEN
  *
  * These are for internal use only, so skip these in
  * public documentation.
  */
+struct i2c_slave_config;
+
+typedef int (*i2c_slave_write_requested_cb_t)(
+		struct i2c_slave_config *config);
+typedef int (*i2c_slave_read_requested_cb_t)(
+		struct i2c_slave_config *config, u8_t *val);
+typedef int (*i2c_slave_write_received_cb_t)(
+		struct i2c_slave_config *config, u8_t val);
+typedef int (*i2c_slave_read_processed_cb_t)(
+		struct i2c_slave_config *config, u8_t *val);
+typedef int (*i2c_slave_stop_cb_t)(struct i2c_slave_config *config);
+
+struct i2c_slave_callbacks {
+	/** callback function being called when write is requested */
+	i2c_slave_write_requested_cb_t write_requested;
+	/** callback function being called when read is requested */
+	i2c_slave_read_requested_cb_t read_requested;
+	/** callback function being called when byte has been received */
+	i2c_slave_write_received_cb_t write_received;
+	/** callback function being called when byte has been sent */
+	i2c_slave_read_processed_cb_t read_processed;
+	/** callback function being called when stop occurs on the bus */
+	i2c_slave_stop_cb_t stop;
+};
+
+struct i2c_slave_config {
+	/** Private, do not modify */
+	sys_snode_t node;
+	/** Flags for the slave device defined by I2C_SLAVE_FLAGS_* constants */
+	u8_t flags;
+	/** Address for this slave device */
+	u16_t address;
+	/** Callback functions */
+	const struct i2c_slave_callbacks *callbacks;
+};
+
 typedef int (*i2c_api_configure_t)(struct device *dev,
 				   u32_t dev_config);
 typedef int (*i2c_api_full_io_t)(struct device *dev,
 				 struct i2c_msg *msgs,
 				 u8_t num_msgs,
 				 u16_t addr);
+typedef int (*i2c_api_slave_register_t)(struct device *dev,
+					struct i2c_slave_config *cfg);
+typedef int (*i2c_api_slave_unregister_t)(struct device *dev,
+					  struct i2c_slave_config *cfg);
 
 struct i2c_driver_api {
 	i2c_api_configure_t configure;
 	i2c_api_full_io_t transfer;
+	i2c_api_slave_register_t slave_register;
+	i2c_api_slave_unregister_t slave_unregister;
+};
+
+typedef int (*i2c_slave_api_register_t)(struct device *dev);
+typedef int (*i2c_slave_api_unregister_t)(struct device *dev);
+
+struct i2c_slave_driver_api {
+	i2c_slave_api_register_t driver_register;
+	i2c_slave_api_unregister_t driver_unregister;
 };
 /**
  * @endcond
@@ -135,63 +185,14 @@ struct i2c_driver_api {
  * @retval 0 If successful.
  * @retval -EIO General input / output error, failed to configure device.
  */
-static inline int i2c_configure(struct device *dev, u32_t dev_config)
+__syscall int i2c_configure(struct device *dev, u32_t dev_config);
+
+static inline int _impl_i2c_configure(struct device *dev, u32_t dev_config)
 {
-	const struct i2c_driver_api *api = dev->driver_api;
+	const struct i2c_driver_api *api =
+		(const struct i2c_driver_api *)dev->driver_api;
 
 	return api->configure(dev, dev_config);
-}
-
-/**
- * @brief Write a set amount of data to an I2C device.
- *
- * This routine writes a set amount of data synchronously.
- *
- * @param dev Pointer to the device structure for the driver instance.
- * @param buf Memory pool from which the data is transferred.
- * @param num_bytes Number of bytes to write.
- * @param addr Address to the target I2C device for writing.
- *
- * @retval 0 If successful.
- * @retval -EIO General input / output error.
- */
-static inline int i2c_write(struct device *dev, u8_t *buf,
-			    u32_t num_bytes, u16_t addr)
-{
-	const struct i2c_driver_api *api = dev->driver_api;
-	struct i2c_msg msg;
-
-	msg.buf = buf;
-	msg.len = num_bytes;
-	msg.flags = I2C_MSG_WRITE | I2C_MSG_STOP;
-
-	return api->transfer(dev, &msg, 1, addr);
-}
-
-/**
- * @brief Read a set amount of data from an I2C device.
- *
- * This routine reads a set amount of data synchronously.
- *
- * @param dev Pointer to the device structure for the driver instance.
- * @param buf Memory pool that stores the retrieved data.
- * @param num_bytes Number of bytes to read.
- * @param addr Address of the I2C device being read.
- *
- * @retval 0 If successful.
- * @retval -EIO General input / output error.
- */
-static inline int i2c_read(struct device *dev, u8_t *buf,
-			   u32_t num_bytes, u16_t addr)
-{
-	const struct i2c_driver_api *api = dev->driver_api;
-	struct i2c_msg msg;
-
-	msg.buf = buf;
-	msg.len = num_bytes;
-	msg.flags = I2C_MSG_READ | I2C_MSG_STOP;
-
-	return api->transfer(dev, &msg, 1, addr);
 }
 
 /**
@@ -212,14 +213,188 @@ static inline int i2c_read(struct device *dev, u8_t *buf,
  * @retval 0 If successful.
  * @retval -EIO General input / output error.
  */
-static inline int i2c_transfer(struct device *dev,
-			       struct i2c_msg *msgs, u8_t num_msgs,
-			       u16_t addr)
+__syscall int i2c_transfer(struct device *dev,
+			   struct i2c_msg *msgs, u8_t num_msgs,
+			   u16_t addr);
+
+static inline int _impl_i2c_transfer(struct device *dev,
+				     struct i2c_msg *msgs, u8_t num_msgs,
+				     u16_t addr)
 {
-	const struct i2c_driver_api *api = dev->driver_api;
+	const struct i2c_driver_api *api =
+		(const struct i2c_driver_api *)dev->driver_api;
 
 	return api->transfer(dev, msgs, num_msgs, addr);
 }
+
+/**
+ * @brief Registers the provided config as Slave device
+ *
+ * Enable I2C slave mode for the 'dev' I2C bus driver using the provided
+ * 'config' struct containing the functions and parameters to send bus
+ * events. The I2C slave will be registered at the address provided as 'address'
+ * struct member. Addressing mode - 7 or 10 bit - depends on the 'flags'
+ * struct member. Any I2C bus events related to the slave mode will be passed
+ * onto I2C slave device driver via a set of callback functions provided in
+ * the 'callbacks' struct member.
+ *
+ * Most of the existing hardware allows simultaneous support for master
+ * and slave mode. This is however not guaranteed.
+ *
+ * @param dev Pointer to the device structure for the driver instance.
+ * @param cfg Config struct with functions and parameters used by the I2C driver
+ * to send bus events
+ *
+ * @retval 0 Is successful
+ * @retval -EINVAL If parameters are invalid
+ * @retval -EIO General input / output error.
+ * @retval -ENOTSUP If slave mode is not supported
+ */
+__syscall int i2c_slave_register(struct device *dev,
+				 struct i2c_slave_config *cfg);
+
+static inline int _impl_i2c_slave_register(struct device *dev,
+					   struct i2c_slave_config *cfg)
+{
+	const struct i2c_driver_api *api =
+		(const struct i2c_driver_api *)dev->driver_api;
+
+	if (!api->slave_register) {
+		return -ENOTSUP;
+	}
+
+	return api->slave_register(dev, cfg);
+}
+
+/**
+ * @brief Unregisters the provided config as Slave device
+ *
+ * This routine disables I2C slave mode for the 'dev' I2C bus driver using
+ * the provided 'config' struct containing the functions and parameters
+ * to send bus events.
+ *
+ * @param dev Pointer to the device structure for the driver instance.
+ * @param cfg Config struct with functions and parameters used by the I2C driver
+ * to send bus events
+ *
+ * @retval 0 Is successful
+ * @retval -EINVAL If parameters are invalid
+ * @retval -ENOTSUP If slave mode is not supported
+ */
+__syscall int i2c_slave_unregister(struct device *dev,
+				   struct i2c_slave_config *cfg);
+
+static inline int _impl_i2c_slave_unregister(struct device *dev,
+					     struct i2c_slave_config *cfg)
+{
+	const struct i2c_driver_api *api =
+		(const struct i2c_driver_api *)dev->driver_api;
+
+	if (!api->slave_unregister) {
+		return -ENOTSUP;
+	}
+
+	return api->slave_unregister(dev, cfg);
+}
+
+/**
+ * @brief Instructs the I2C Slave device to register itself to the I2C Controller
+ *
+ * This routine instructs the I2C Slave device to register itself to the I2C
+ * Controller.
+ *
+ * @param dev Pointer to the device structure for the driver instance.
+ *
+ * @retval 0 Is successful
+ * @retval -EINVAL If parameters are invalid
+ * @retval -EIO General input / output error.
+ */
+__syscall int i2c_slave_driver_register(struct device *dev);
+
+static inline int _impl_i2c_slave_driver_register(struct device *dev)
+{
+	const struct i2c_slave_driver_api *api =
+		(const struct i2c_slave_driver_api *)dev->driver_api;
+
+	return api->driver_register(dev);
+}
+
+/**
+ * @brief Instructs the I2C Slave device to unregister itself from the I2C
+ * Controller
+ *
+ * This routine instructs the I2C Slave device to unregister itself from the I2C
+ * Controller.
+ *
+ * @param dev Pointer to the device structure for the driver instance.
+ *
+ * @retval 0 Is successful
+ * @retval -EINVAL If parameters are invalid
+ */
+__syscall int i2c_slave_driver_unregister(struct device *dev);
+
+static inline int _impl_i2c_slave_driver_unregister(struct device *dev)
+{
+	const struct i2c_slave_driver_api *api =
+		(const struct i2c_slave_driver_api *)dev->driver_api;
+
+	return api->driver_unregister(dev);
+}
+
+/*
+ * Derived i2c APIs -- all implemented in terms of i2c_transfer()
+ */
+
+/**
+ * @brief Write a set amount of data to an I2C device.
+ *
+ * This routine writes a set amount of data synchronously.
+ *
+ * @param dev Pointer to the device structure for the driver instance.
+ * @param buf Memory pool from which the data is transferred.
+ * @param num_bytes Number of bytes to write.
+ * @param addr Address to the target I2C device for writing.
+ *
+ * @retval 0 If successful.
+ * @retval -EIO General input / output error.
+ */
+static inline int i2c_write(struct device *dev, const u8_t *buf,
+			    u32_t num_bytes, u16_t addr)
+{
+	struct i2c_msg msg;
+
+	msg.buf = (u8_t *)buf;
+	msg.len = num_bytes;
+	msg.flags = I2C_MSG_WRITE | I2C_MSG_STOP;
+
+	return i2c_transfer(dev, &msg, 1, addr);
+}
+
+/**
+ * @brief Read a set amount of data from an I2C device.
+ *
+ * This routine reads a set amount of data synchronously.
+ *
+ * @param dev Pointer to the device structure for the driver instance.
+ * @param buf Memory pool that stores the retrieved data.
+ * @param num_bytes Number of bytes to read.
+ * @param addr Address of the I2C device being read.
+ *
+ * @retval 0 If successful.
+ * @retval -EIO General input / output error.
+ */
+static inline int i2c_read(struct device *dev, u8_t *buf,
+			   u32_t num_bytes, u16_t addr)
+{
+	struct i2c_msg msg;
+
+	msg.buf = buf;
+	msg.len = num_bytes;
+	msg.flags = I2C_MSG_READ | I2C_MSG_STOP;
+
+	return i2c_transfer(dev, &msg, 1, addr);
+}
+
 
 /**
  * @brief Read multiple bytes from an internal address of an I2C device.
@@ -238,9 +413,8 @@ static inline int i2c_transfer(struct device *dev,
  */
 static inline int i2c_burst_read(struct device *dev, u16_t dev_addr,
 				 u8_t start_addr, u8_t *buf,
-				 u8_t num_bytes)
+				 u32_t num_bytes)
 {
-	const struct i2c_driver_api *api = dev->driver_api;
 	struct i2c_msg msg[2];
 
 	msg[0].buf = &start_addr;
@@ -251,7 +425,7 @@ static inline int i2c_burst_read(struct device *dev, u16_t dev_addr,
 	msg[1].len = num_bytes;
 	msg[1].flags = I2C_MSG_RESTART | I2C_MSG_READ | I2C_MSG_STOP;
 
-	return api->transfer(dev, msg, 2, dev_addr);
+	return i2c_transfer(dev, msg, 2, dev_addr);
 }
 
 /**
@@ -270,21 +444,20 @@ static inline int i2c_burst_read(struct device *dev, u16_t dev_addr,
  * @retval -EIO General input / output error.
  */
 static inline int i2c_burst_write(struct device *dev, u16_t dev_addr,
-				  u8_t start_addr, u8_t *buf,
-				  u8_t num_bytes)
+				  u8_t start_addr, const u8_t *buf,
+				  u32_t num_bytes)
 {
-	const struct i2c_driver_api *api = dev->driver_api;
 	struct i2c_msg msg[2];
 
 	msg[0].buf = &start_addr;
 	msg[0].len = 1;
 	msg[0].flags = I2C_MSG_WRITE;
 
-	msg[1].buf = buf;
+	msg[1].buf = (u8_t *)buf;
 	msg[1].len = num_bytes;
 	msg[1].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
 
-	return api->transfer(dev, msg, 2, dev_addr);
+	return i2c_transfer(dev, msg, 2, dev_addr);
 }
 
 /**
@@ -381,9 +554,8 @@ static inline int i2c_reg_update_byte(struct device *dev, u8_t dev_addr,
  */
 static inline int i2c_burst_read16(struct device *dev, u16_t dev_addr,
 				   u16_t start_addr, u8_t *buf,
-				   u8_t num_bytes)
+				   u32_t num_bytes)
 {
-	const struct i2c_driver_api *api = dev->driver_api;
 	u8_t addr_buffer[2];
 	struct i2c_msg msg[2];
 
@@ -397,7 +569,7 @@ static inline int i2c_burst_read16(struct device *dev, u16_t dev_addr,
 	msg[1].len = num_bytes;
 	msg[1].flags = I2C_MSG_RESTART | I2C_MSG_READ | I2C_MSG_STOP;
 
-	return api->transfer(dev, msg, 2, dev_addr);
+	return i2c_transfer(dev, msg, 2, dev_addr);
 }
 
 /**
@@ -416,10 +588,9 @@ static inline int i2c_burst_read16(struct device *dev, u16_t dev_addr,
  * @retval Negative errno code if failure.
  */
 static inline int i2c_burst_write16(struct device *dev, u16_t dev_addr,
-				    u16_t start_addr, u8_t *buf,
-				    u8_t num_bytes)
+				    u16_t start_addr, const u8_t *buf,
+				    u32_t num_bytes)
 {
-	const struct i2c_driver_api *api = dev->driver_api;
 	u8_t addr_buffer[2];
 	struct i2c_msg msg[2];
 
@@ -429,11 +600,11 @@ static inline int i2c_burst_write16(struct device *dev, u16_t dev_addr,
 	msg[0].len = 2;
 	msg[0].flags = I2C_MSG_WRITE;
 
-	msg[1].buf = buf;
+	msg[1].buf = (u8_t *)buf;
 	msg[1].len = num_bytes;
 	msg[1].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
 
-	return api->transfer(dev, msg, 2, dev_addr);
+	return i2c_transfer(dev, msg, 2, dev_addr);
 }
 
 /**
@@ -530,14 +701,13 @@ static inline int i2c_reg_update16(struct device *dev, u16_t dev_addr,
  * @retval Negative errno code if failure.
  */
 static inline int i2c_burst_read_addr(struct device *dev, u16_t dev_addr,
-				      u8_t *start_addr,
+				      const u8_t *start_addr,
 				      const u8_t addr_size,
-				      u8_t *buf, u8_t num_bytes)
+				      u8_t *buf, u32_t num_bytes)
 {
-	const struct i2c_driver_api *api = dev->driver_api;
 	struct i2c_msg msg[2];
 
-	msg[0].buf = start_addr;
+	msg[0].buf = (u8_t *)start_addr;
 	msg[0].len = addr_size;
 	msg[0].flags = I2C_MSG_WRITE;
 
@@ -545,7 +715,7 @@ static inline int i2c_burst_read_addr(struct device *dev, u16_t dev_addr,
 	msg[1].len = num_bytes;
 	msg[1].flags = I2C_MSG_RESTART | I2C_MSG_READ | I2C_MSG_STOP;
 
-	return api->transfer(dev, msg, 2, dev_addr);
+	return i2c_transfer(dev, msg, 2, dev_addr);
 }
 
 /**
@@ -566,22 +736,21 @@ static inline int i2c_burst_read_addr(struct device *dev, u16_t dev_addr,
  * @retval Negative errno code if failure.
  */
 static inline int i2c_burst_write_addr(struct device *dev, u16_t dev_addr,
-				       u8_t *start_addr,
+				       const u8_t *start_addr,
 				       const u8_t addr_size,
-				       u8_t *buf, u8_t num_bytes)
+				       const u8_t *buf, u32_t num_bytes)
 {
-	const struct i2c_driver_api *api = dev->driver_api;
 	struct i2c_msg msg[2];
 
-	msg[0].buf = start_addr;
+	msg[0].buf = (u8_t *)start_addr;
 	msg[0].len = addr_size;
 	msg[0].flags = I2C_MSG_WRITE;
 
-	msg[1].buf = buf;
+	msg[1].buf = (u8_t *)buf;
 	msg[1].len = num_bytes;
 	msg[1].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
 
-	return api->transfer(dev, msg, 2, dev_addr);
+	return i2c_transfer(dev, msg, 2, dev_addr);
 }
 
 /**
@@ -603,8 +772,8 @@ static inline int i2c_burst_write_addr(struct device *dev, u16_t dev_addr,
  */
 static inline int i2c_reg_read_addr(struct device *dev,
 				    u16_t dev_addr,
-				    u8_t *reg_addr,
-				    const u8_t addr_size,
+				    const u8_t *reg_addr,
+				    u8_t addr_size,
 				    u8_t *value)
 {
 	return i2c_burst_read_addr(dev, dev_addr, reg_addr,
@@ -630,7 +799,7 @@ static inline int i2c_reg_read_addr(struct device *dev,
  */
 static inline int i2c_reg_write_addr(struct device *dev,
 				     u16_t dev_addr,
-				     u8_t *reg_addr,
+				     const u8_t *reg_addr,
 				     const u8_t addr_size,
 				     u8_t value)
 {
@@ -658,7 +827,7 @@ static inline int i2c_reg_write_addr(struct device *dev,
  */
 static inline int i2c_reg_update_addr(struct device *dev,
 				      u16_t dev_addr,
-				      u8_t *reg_addr,
+				      const u8_t *reg_addr,
 				      u8_t addr_size,
 				      u8_t mask,
 				      u8_t value)
@@ -705,5 +874,6 @@ struct i2c_client_config {
  * @}
  */
 
+#include <syscalls/i2c.h>
 
-#endif /* __DRIVERS_I2C_H */
+#endif /* ZEPHYR_INCLUDE_I2C_H_ */

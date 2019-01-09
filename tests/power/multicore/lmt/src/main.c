@@ -49,25 +49,25 @@ static void resume_devices(void)
 	}
 }
 
-int _sys_soc_suspend(s32_t ticks)
+int sys_suspend(s32_t ticks)
 {
 	printk("LMT: Try to put the system in SYS_POWER_STATE_DEEP_SLEEP_2"
 	       " state\n");
 
-	if (!_sys_soc_power_state_is_arc_ready()) {
+	if (!sys_power_state_is_arc_ready()) {
 		printk("LMT: Failed. ARC is busy.\n");
 		return SYS_PM_NOT_HANDLED;
 	}
 
 	suspend_devices();
 
-	_sys_soc_set_power_state(SYS_POWER_STATE_DEEP_SLEEP_2);
+	sys_set_power_state(SYS_POWER_STATE_CPU_LPS_2);
 
 	resume_devices();
 
 	printk("LMT: Succeed.\n");
 
-	_sys_soc_power_state_post_ops(SYS_POWER_STATE_DEEP_SLEEP_2);
+	sys_power_state_post_ops(SYS_POWER_STATE_CPU_LPS_2);
 
 	return SYS_PM_DEEP_SLEEP;
 }
@@ -150,6 +150,11 @@ void main(void)
 	rtc_set_config(rtc_dev, &config);
 
 	while (1) {
+		/* Add a busy loop to syncronize the
+		 * console output b/w x86 and ARC.
+		 */
+		k_busy_wait(1000 * 1000);
+
 		/* Simulate some task handling by busy waiting. */
 		printk("LMT: busy\n");
 		k_busy_wait(TASK_TIME_IN_SEC * 1000 * 1000);

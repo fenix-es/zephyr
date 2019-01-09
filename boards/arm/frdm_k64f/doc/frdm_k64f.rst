@@ -76,6 +76,8 @@ The frdm_k64f board configuration supports the following hardware features:
 +-----------+------------+-------------------------------------+
 | SPI       | on-chip    | spi                                 |
 +-----------+------------+-------------------------------------+
+| WATCHDOG  | on-chip    | watchdog                            |
++-----------+------------+-------------------------------------+
 | ADC       | on-chip    | adc                                 |
 +-----------+------------+-------------------------------------+
 | PWM       | on-chip    | pwm                                 |
@@ -86,6 +88,8 @@ The frdm_k64f board configuration supports the following hardware features:
 |           |            | serial port-interrupt               |
 +-----------+------------+-------------------------------------+
 | FLASH     | on-chip    | soc flash                           |
++-----------+------------+-------------------------------------+
+| USB       | on-chip    | USB device                          |
 +-----------+------------+-------------------------------------+
 | SENSOR    | off-chip   | fxos8700 polling;                   |
 |           |            | fxos8700 trigger                    |
@@ -131,13 +135,13 @@ The K64F SoC has five pairs of pinmux/gpio controllers.
 +-------+-----------------+---------------------------+
 | PTC17 | UART3_TX        | UART BT HCI               |
 +-------+-----------------+---------------------------+
-| PTCD0 | SPI0_PCS0       | SPI                       |
+| PTD0  | SPI0_PCS0       | SPI                       |
 +-------+-----------------+---------------------------+
-| PTCD1 | SPI0_SCK        | SPI                       |
+| PTD1  | SPI0_SCK        | SPI                       |
 +-------+-----------------+---------------------------+
-| PTCD2 | SPI0_SOUT       | SPI                       |
+| PTD2  | SPI0_SOUT       | SPI                       |
 +-------+-----------------+---------------------------+
-| PTCD3 | SPI0_SIN        | SPI                       |
+| PTD3  | SPI0_SIN        | SPI                       |
 +-------+-----------------+---------------------------+
 | PTE24 | I2C0_SCL        | I2C / FXOS8700            |
 +-------+-----------------+---------------------------+
@@ -188,6 +192,13 @@ Serial Port
 The K64F SoC has six UARTs. One is configured for the console, another for BT
 HCI, and the remaining are not used.
 
+USB
+===
+
+The K64F SoC has a USB OTG (USBOTG) controller that supports both
+device and host functions through its micro USB connector (K64F USB).
+Only USB device function is supported in Zephyr at the moment.
+
 Programming and Debugging
 *************************
 
@@ -198,29 +209,30 @@ communication over USB.
 To use the pyOCD tools with OpenSDA, follow the instructions in the
 :ref:`nxp_opensda_pyocd` page using the `DAPLink FRDM-K64F Firmware`_. The
 pyOCD tools are the default for this board, therefore it is not necessary to
-set ``OPENSDA_FW=daplink`` explicitly when you invoke ``make flash`` or ``make
-debug``.
+set ``OPENSDA_FW=daplink`` explicitly when using the default flash and debug
+mechanisms.
+
+With these mechanisms, applications for the ``frdm_k64f`` board
+configuration can be built and flashed in the usual way (see
+:ref:`build_an_application` and :ref:`application_run` for more
+details).
 
 To use the Segger J-Link tools with OpenSDA, follow the instructions in the
 :ref:`nxp_opensda_jlink` page using the `Segger J-Link OpenSDA V2.1 Firmware`_.
 The Segger J-Link tools are not the default for this board, therefore it is
-necessary to set ``OPENSDA_FW=jlink`` explicitly when you invoke ``make
-debug``.
+necessary to set ``OPENSDA_FW=jlink`` explicitly in the environment before
+programming and debugging.
 
 Flashing
 ========
 
 This example uses the :ref:`hello_world` sample with the
-:ref:`nxp_opensda_pyocd` tools. Use the ``make flash`` build target to build
-your Zephyr application, invoke the pyOCD flash tool and program your Zephyr
-application to flash.
+:ref:`nxp_opensda_pyocd` tools.
 
-.. code-block:: console
-
-   $ cd <zephyr_root_path>
-   $ . zephyr-env.sh
-   $ cd samples/hello_world/
-   $ make BOARD=frdm_k64f flash
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: frdm_k64f
+   :goals: flash
 
 Open a serial terminal (minicom, putty, etc.) with the following settings:
 
@@ -239,36 +251,32 @@ the following message:
 Debugging
 =========
 
-This example uses the :ref:`hello_world` sample with the
-:ref:`nxp_opensda_pyocd` tools. Use the ``make debug`` build target to build
-your Zephyr application, invoke the pyOCD GDB server, attach a GDB client, and
-program your Zephyr application to flash. It will leave you at a gdb prompt.
+You can debug an application in the usual way.  Here is an example for the
+:ref:`hello_world` application.
 
-.. code-block:: console
-
-   $ cd <zephyr_root_path>
-   $ . zephyr-env.sh
-   $ cd samples/hello_world/
-   $ make BOARD=frdm_k64f debug
-
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: frdm_k64f
+   :maybe-skip-config:
+   :goals: debug
 
 .. _FRDM-K64F Website:
-   http://www.nxp.com/products/software-and-tools/hardware-development-tools/freedom-development-boards/freedom-development-platform-for-kinetis-k64-k63-and-k24-mcus:FRDM-K64F
+   https://www.nxp.com/support/developer-resources/evaluation-and-development-boards/freedom-development-boards/mcu-boards/freedom-development-platform-for-kinetis-k64-k63-and-k24-mcus:FRDM-K64F
 
 .. _FRDM-K64F User Guide:
-   http://www.nxp.com/assets/documents/data/en/user-guides/FRDMK64FUG.pdf
+   https://www.nxp.com/webapp/Download?colCode=FRDMK64FUG
 
 .. _FRDM-K64F Schematics:
-   http://www.nxp.com/assets/downloads/data/en/schematics/FRDM-K64F-SCH-E4.pdf
+   https://www.nxp.com/webapp/Download?colCode=FRDM-K64F-SCH-E4
 
 .. _K64F Website:
-   http://www.nxp.com/products/microcontrollers-and-processors/arm-processors/kinetis-cortex-m-mcus/k-series-performance-m4/k6x-ethernet/kinetis-k64-120-mhz-256kb-sram-microcontrollers-mcus-based-on-arm-cortex-m4-core:K64_120
+   https://www.nxp.com/products/processors-and-microcontrollers/arm-based-processors-and-mcus/kinetis-cortex-m-mcus/k-seriesperformancem4/k6x-ethernet/kinetis-k64-120-mhz-256kb-sram-microcontrollers-mcus-based-on-arm-cortex-m4-core:K64_120
 
 .. _K64F Datasheet:
-   http://www.nxp.com/assets/documents/data/en/data-sheets/K64P144M120SF5.pdf
+   https://www.nxp.com/docs/en/data-sheet/K64P144M120SF5.pdf
 
 .. _K64F Reference Manual:
-   http://www.nxp.com/assets/documents/data/en/reference-manuals/K64P144M120SF5RM.pdf
+   https://www.nxp.com/docs/en/reference-manual/K64P144M120SF5RM.pdf
 
 .. _DAPLink FRDM-K64F Firmware:
    http://www.nxp.com/assets/downloads/data/en/ide-debug-compile-build-tools/OpenSDAv2.2_DAPLink_frdmk64f_rev0242.zip

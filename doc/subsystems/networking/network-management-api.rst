@@ -35,26 +35,66 @@ To avoid extra cost, all :cpp:func:`net_mgmt()` calls are direct. Though this
 may change in a future release, it will not affect the users of this
 function.
 
-Listening to network event
-**************************
+Listening to network events
+***************************
 
 You can receive notifications on network events by registering a
-callback function and specifying an event mask used to match one or
-more events that are relevant.
+callback function and specifying a set of events used to filter when
+your callback is invoked.
 
 Two functions are available, :cpp:func:`net_mgmt_add_event_callback()` for
 registering the callback function, and
 :cpp:func:`net_mgmt_del_event_callback()`
-for unregistering. A helper function, :cpp:func:`net_mgmt_init_event_cb()`, can
+for unregistering a callback. A helper function,
+:cpp:func:`net_mgmt_init_event_callback()`, can
 be used to ease the initialization of the callback structure.
 
-When an event is raised that matches a registered event mask, the
+When an event occurs that matches a callback's event set, the
 associated callback function is invoked with the actual event
 code. This makes it possible for different events to be handled by the
 same callback function, if desired.
 
-See an example of registering callback functions and using the network
-management API in :file:`test/net/mgmt/src/mgmt.c`.
+.. warning::
+
+   Event set filtering allows false positives for events that have the same
+   layer and layer code.  A callback handler function **must** check
+   the event code (passed as an argument) against the specific network
+   events it will handle, **regardless** of how many events were in the
+   set passed to :cpp:func:`net_mgmt_init_event_callback()`.
+
+   (False positives can occur for events which have the same layer and
+   layer code.)
+
+An example follows.
+
+.. code-block:: c
+
+	/*
+	 * Set of events to handle.
+	 * See e.g. include/net/net_event.h for some NET_EVENT_xxx values.
+	 */
+	#define EVENT_SET (NET_EVENT_xxx | NET_EVENT_yyy)
+
+	struct net_mgmt_event_callback callback;
+
+	void callback_handler(struct net_mgmt_event_callback *cb, u32_t mgmt_event,
+			      struct net_if *iface)
+	{
+		if (mgmt_event == NET_EVENT_xxx) {
+			/* Handle NET_EVENT_xxx */
+		} else if (mgmt_event == NET_EVENT_yyy) {
+			/* Handle NET_EVENT_yyy */
+		} else {
+			/* Spurious (false positive) invocation. */
+		}
+	}
+
+	void register_cb(void)
+	{
+		net_mgmt_init_event_callback(&callback, callback_handler, EVENT_SET);
+		netmgmt_add_event_callback(&callback);
+	}
+
 
 Defining a network management procedure
 ***************************************
@@ -96,6 +136,6 @@ Signaling a network event
 You can signal a specific network event using the :cpp:func:`net_mgmt_notify()`
 function and provide the network event code. See
 :file:`include/net/net_mgmt.h` for details. As for the management request
-code, event code can be also found on specific L2 technology headers,
-for example :file:`include/net/ieee802154.h` would be the right place if
+code, event code can be also found on specific L2 technology mgmt headers,
+for example :file:`include/net/ieee802154_mgmt.h` would be the right place if
 802.15.4 L2 is the technology one wants to listen to events.

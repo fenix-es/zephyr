@@ -5,14 +5,10 @@
  */
 
 #include <zephyr.h>
-#include <board.h>
 #include <device.h>
 #include <gpio.h>
 
-/* Change this if you have an LED connected to a custom port */
-#define PORT	LED0_GPIO_PORT
-
-/* Change this if you have an LED connected to a custom pin */
+#define LED_PORT LED0_GPIO_CONTROLLER
 #define LED	LED0_GPIO_PIN
 
 /* 1000 msec = 1 sec */
@@ -23,7 +19,7 @@ void main(void)
 	int cnt = 0;
 	struct device *dev;
 
-	dev = device_get_binding(PORT);
+	dev = device_get_binding(LED_PORT);
 	/* Set LED pin as output */
 	gpio_pin_configure(dev, LED, GPIO_DIR_OUT);
 

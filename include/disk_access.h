@@ -14,10 +14,12 @@
  * and Filesystems.
  */
 
-#ifndef _DISK_ACCESS_H_
-#define _DISK_ACCESS_H_
+#ifndef ZEPHYR_INCLUDE_DISK_ACCESS_H_
+#define ZEPHYR_INCLUDE_DISK_ACCESS_H_
 
+#include <kernel.h>
 #include <zephyr/types.h>
+#include <misc/dlist.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,18 +31,36 @@ extern "C" {
 #define DISK_IOCTL_GET_SECTOR_COUNT		1
 /* Get the size of a disk SECTOR in bytes */
 #define DISK_IOCTL_GET_SECTOR_SIZE		2
-/* Get the size of the disk in bytes */
-#define DISK_IOCTL_GET_DISK_SIZE		3
 /* How many  sectors constitute a FLASH Erase block */
 #define DISK_IOCTL_GET_ERASE_BLOCK_SZ		4
 /* Commit any cached read/writes to disk */
 #define DISK_IOCTL_CTRL_SYNC			5
+
+/* 3 is reserved.  It used to be DISK_IOCTL_GET_DISK_SIZE */
 
 /* Possible return bitmasks for disk_status() */
 #define DISK_STATUS_OK			0x00
 #define DISK_STATUS_UNINIT		0x01
 #define DISK_STATUS_NOMEDIA		0x02
 #define DISK_STATUS_WR_PROTECT		0x04
+
+struct disk_operations;
+
+struct disk_info {
+	sys_dnode_t node;
+	char *name;
+	const struct disk_operations *ops;
+};
+
+struct disk_operations {
+	int (*init)(struct disk_info *disk);
+	int (*status)(struct disk_info *disk);
+	int (*read)(struct disk_info *disk, u8_t *data_buf,
+		    u32_t start_sector, u32_t num_sector);
+	int (*write)(struct disk_info *disk, const u8_t *data_buf,
+		     u32_t start_sector, u32_t num_sector);
+	int (*ioctl)(struct disk_info *disk, u8_t cmd, void *buff);
+};
 
 /*
  * @brief perform any initialization
@@ -50,7 +70,7 @@ extern "C" {
  *
  * @return 0 on success, negative errno code on fail
  */
-int disk_access_init(void);
+int disk_access_init(const char *pdrv);
 
 /*
  * @brief Get the status of disk
@@ -59,7 +79,7 @@ int disk_access_init(void);
  *
  * @return DISK_STATUS_OK or other DISK_STATUS_*s
  */
-int disk_access_status(void);
+int disk_access_status(const char *pdrv);
 
 /*
  * @brief read data from disk
@@ -72,8 +92,8 @@ int disk_access_status(void);
  *
  * @return 0 on success, negative errno code on fail
  */
-int disk_access_read(u8_t *data_buf, u32_t start_sector,
-		     u32_t num_sector);
+int disk_access_read(const char *pdrv, u8_t *data_buf,
+		     u32_t start_sector, u32_t num_sector);
 
 /*
  * @brief write data to disk
@@ -86,8 +106,8 @@ int disk_access_read(u8_t *data_buf, u32_t start_sector,
  *
  * @return 0 on success, negative errno code on fail
  */
-int disk_access_write(const u8_t *data_buf, u32_t start_sector,
-		      u32_t num_sector);
+int disk_access_write(const char *pdrv, const u8_t *data_buf,
+		      u32_t start_sector, u32_t num_sector);
 
 /*
  * @brief Get/Configure disk parameters
@@ -98,11 +118,14 @@ int disk_access_write(const u8_t *data_buf, u32_t start_sector,
  *
  * @return 0 on success, negative errno code on fail
  */
-int disk_access_ioctl(u8_t cmd, void *buff);
+int disk_access_ioctl(const char *pdrv, u8_t cmd, void *buff);
 
+int disk_access_register(struct disk_info *disk);
+
+int disk_access_unregister(struct disk_info *disk);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* _DISK_ACCESS_H_ */
+#endif /* ZEPHYR_INCLUDE_DISK_ACCESS_H_ */

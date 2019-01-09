@@ -2,8 +2,6 @@
   ******************************************************************************
   * @file    stm32f4xx_ll_lptim.h
   * @author  MCD Application Team
-  * @version V1.7.1
-  * @date    14-April-2017
   * @brief   Header file of LPTIM LL module.
   ******************************************************************************
   * @attention
@@ -49,7 +47,7 @@ extern "C" {
 /** @addtogroup STM32F4xx_LL_Driver
   * @{
   */
-#if defined (LPTIM1) 
+#if defined (LPTIM1)
 	
 /** @defgroup LPTIM_LL LPTIM
   * @{
@@ -276,7 +274,7 @@ typedef struct
   * @}
   */
 
-  
+
 /**
   * @}
   */

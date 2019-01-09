@@ -34,12 +34,8 @@ nRF5x Command-Line Tools Installation
 The nRF5x command-line Tools allow you to control your nRF5x device from the command line,
 including resetting it, erasing or programming the flash memory and more.
 
-To install them, use the appropriate link for your operating system:
-
-* `nRF5x Command-Line Tools for Windows`_
-* `nRF5x Command-Line Tools for Linux 32-bit`_
-* `nRF5x Command-Line Tools for Linux 64-bit`_
-* `nRF5x Command-Line Tools for macOS`_
+To install them, visit `nRF5x Command-Line Tools`_ and select your operating
+system.
 
 After installing, make sure that ``nrfjprog`` is somewhere in your executable path
 to be able to invoke it from anywhere.
@@ -57,7 +53,7 @@ to install the Segger J-Link Software and the nRF5x Command-Line Tools, follow t
 
 .. code-block:: console
 
-   $ nrfjprog --eraseall -f nrf5<x>
+   nrfjprog --eraseall -f nrf5<x>
 
 Where ``<x>`` is either 1 for nRF51-based boards or 2 for nRF52-based boards
 
@@ -65,7 +61,7 @@ Where ``<x>`` is either 1 for nRF51-based boards or 2 for nRF52-based boards
 
 .. code-block:: console
 
-   $ nrfjprog --program outdir/<board>/zephyr.hex -f nrf5<x>
+   nrfjprog --program outdir/<board>/zephyr.hex -f nrf5<x>
 
 Where: ``<board>`` is the board name you used in the BOARD directive when building (for example nrf52_pca10040)
 and ``<x>`` is either 1 for nRF51-based boards or 2 for nRF52-based boards
@@ -74,7 +70,7 @@ and ``<x>`` is either 1 for nRF51-based boards or 2 for nRF52-based boards
 
 .. code-block:: console
 
-   $ nrfjprog --reset -f nrf5<x>
+   nrfjprog --reset -f nrf5<x>
 
 Where ``<x>`` is either 1 for nRF51-based boards or 2 for nRF52-based boards
 
@@ -98,16 +94,31 @@ The serial port will appear as ``/dev/ttyACMx``. By default the port is not acce
 Type the command below to add your user to the dialout group to give it access to the serial port.
 Note that re-login is required for this to take effect.
 
-.. code-block:: console
+.. code-block:: bash
 
-   $ sudo usermod -a -G dialout <username>
+   sudo usermod -a -G dialout `whoami`
 
-To avoid it being taken by the Modem Manager for a few seconds when you plug the board in:
+Recent versions of `ModemManager send AT commands to TTY-like devices`_; this
+includes Nordic development kits. This will prevent you from using the serial
+port for a few seconds, and can make your application misbehave if it reads
+data from the UART. Before running your application, you might want to
+temporarily disable ModemManager by running these commands:
 
-.. code-block:: console
+.. code-block:: bash
 
    systemctl stop ModemManager.service
    systemctl disable ModemManager.service
+
+You can also `blacklist Segger devices by editing udev rules`_ so ModemManager
+ignores them, by running:
+
+.. code-block:: bash
+
+   sudo sh -c 'echo "ATTRS{idVendor}==\"1366\", ENV{ID_MM_DEVICE_IGNORE}=\"1\" " \
+     >> /etc/udev/rules.d/99-segger-modemmanager-blacklist.rules'
+   sudo service udev restart
+
+A fix for this is expected in ModemManager 1.8 and new firmware for the Segger IMCUs.
 
 Apple macOS (OS X)
 ==================
@@ -131,7 +142,7 @@ To avoid this, you can simply disable the Mass Storage Device by opening:
 
 And then typing the following:
 
-.. code-block:: console
+.. code-block:: bat
 
    MSDDisable
 
@@ -149,10 +160,20 @@ which can be very useful if the UART (through USB CDC ACM) is already being used
 a purpose different than logging (such as HCI traffic in the hci_uart application).
 To use RTT, you will first need to enable it by adding the following lines in your ``.conf`` file:
 
-.. code-block:: console
+.. code-block:: text
 
    CONFIG_HAS_SEGGER_RTT=y
+   CONFIG_USE_SEGGER_RTT=y
    CONFIG_RTT_CONSOLE=y
+
+If you get no RTT output you might need to disable other consoles which conflict
+with the RTT one if they are enabled by default in the particular sample or
+application you are running. For example, to disable the UART console,
+add this to your ``.conf`` file:
+
+.. code-block:: console
+
+   CONFIG_UART_CONSOLE=n
 
 Once compiled and flashed with RTT enabled, you will be able to display RTT console
 messages by doing the following:
@@ -181,6 +202,11 @@ GNU/Linux and macOS (OS X)
   * RTT Channel name or index: 0
   * Output file: filename or ``/dev/stdout`` to display on the terminal directly
 
+Python viewer
+=============
+
+A Python RTT viewer tool can be found in the `pyrtt-viewer`_ GitHub repository.
+
 Segger Ozone
 ************
 
@@ -196,24 +222,23 @@ Once downloaded you can install it and configure it like so:
 * Host Interface: USB
 
 Once configured, you can then use the File->Open menu to open the ``zephyr.elf``
-file that you can find in your ``outdir/<board>/`` folder.
+file that you can find in your build folder.
 
 References
 **********
 
 .. target-notes::
 
-.. _nRF5x Command-Line Tools for Windows: https://www.nordicsemi.com/eng/nordic/Products/nRF51822/nRF5x-Command-Line-Tools-Win32/33444
-.. _nRF5x Command-Line Tools for Linux 32-bit: https://www.nordicsemi.com/eng/nordic/Products/nRF51822/nRF5x-Command-Line-Tools-Linux32/52615
-.. _nRF5x Command-Line Tools for Linux 64-bit: https://www.nordicsemi.com/eng/nordic/Products/nRF51822/nRF5x-Command-Line-Tools-Linux64/51386
-.. _nRF5x Command-Line Tools for macOS: https://www.nordicsemi.com/eng/nordic/Products/nRF51822/nRF5x-Command-Line-Tools-OSX/53402
+.. _nRF5x Command-Line Tools: https://www.nordicsemi.com/Software-and-Tools/Development-Tools/nRF5-Command-Line-Tools
 
 .. _Segger SAM3U Wiki: https://wiki.segger.com/index.php?title=J-Link-OB_SAM3U
 .. _Real-Time Tracing (RTT): https://www.segger.com/jlink-rtt.html
+.. _pyrtt-viewer: https://github.com/thomasstenersen/pyrtt-viewer
 .. _Segger Ozone: https://www.segger.com/ozone.html
 .. _Segger Ozone Download: https://www.segger.com/downloads/jlink#Ozone
 
-.. _nRF52 DK website: http://www.nordicsemi.com/eng/Products/Bluetooth-Smart-Bluetooth-low-energy/nRF52-DK
-.. _Nordic Semiconductor Infocenter: http://infocenter.nordicsemi.com/
+.. _ModemManager send AT commands to TTY-like devices: https://bugs.freedesktop.org/show_bug.cgi?id=85007
+.. _blacklist Segger devices by editing udev rules: http://www.at91.com/linux4sam/bin/view/Linux4SAM/SoftwareTools#Device_or_resource_busy_dev_ttyA
+
 .. _J-Link Software and documentation pack: https://www.segger.com/jlink-software.html
 

@@ -4,12 +4,26 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#ifndef DISPLAY_GROVE_LCD_H
-#define DISPLAY_GROVE_LCD_H
+#ifndef ZEPHYR_INCLUDE_DISPLAY_GROVE_LCD_H_
+#define ZEPHYR_INCLUDE_DISPLAY_GROVE_LCD_H_
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * @brief Display Drivers
+ * @defgroup display_interfaces Display Drivers
+ * @{
+ * @}
+ */
+
+/**
+ * @brief Grove display APIs
+ * @defgroup grove_display Grove display APIs
+ * @ingroup display_interfaces
+ * @{
+ */
 
 #define GROVE_LCD_NAME			"GLCD"
 
@@ -156,8 +170,13 @@ void glcd_color_set(struct device *port, u8_t r, u8_t g, u8_t b);
  */
 int glcd_initialize(struct device *port);
 
+
+/**
+ * @}
+ */
+
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* DISPLAY_GROVE_LCD_H */
+#endif /* ZEPHYR_INCLUDE_DISPLAY_GROVE_LCD_H_ */

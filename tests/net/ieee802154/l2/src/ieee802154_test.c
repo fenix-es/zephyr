@@ -4,12 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <logging/log.h>
+LOG_MODULE_REGISTER(net_ieee802154_test, LOG_LEVEL_DBG);
+
 #include <zephyr.h>
 #include <ztest.h>
 
 #include <net/net_core.h>
-#define NET_LOG_ENABLED 1
-#define NET_SYS_LOG_LEVEL 4
 #include "net_private.h"
 
 #include <net/net_ip.h>
@@ -175,16 +176,17 @@ static bool test_ns_sending(struct ieee802154_pkt_test *t)
 		return false;
 	}
 
-	k_sem_take(&driver_lock, 10);
+	k_yield();
+	k_sem_take(&driver_lock, K_SECONDS(1));
 
 	if (!current_pkt->frags) {
 		NET_ERR("*** Could not send IPv6 NS packet\n");
 		return false;
 	}
 
-	pkt_hexdump(net_pkt_ll(current_pkt), net_pkt_get_len(current_pkt));
+	pkt_hexdump(net_pkt_data(current_pkt), net_pkt_get_len(current_pkt));
 
-	if (!ieee802154_validate_frame(net_pkt_ll(current_pkt),
+	if (!ieee802154_validate_frame(net_pkt_data(current_pkt),
 				       net_pkt_get_len(current_pkt), &mpdu)) {
 		NET_ERR("*** Sent packet is not valid\n");
 		net_pkt_unref(current_pkt);
@@ -217,7 +219,7 @@ static bool test_ack_reply(struct ieee802154_pkt_test *t)
 
 	NET_INFO("- Sending ACK reply to a data packet\n");
 
-	pkt = net_pkt_get_reserve_rx(0, K_FOREVER);
+	pkt = net_pkt_get_reserve_rx(K_FOREVER);
 	frag = net_pkt_get_frag(pkt, K_FOREVER);
 
 	memcpy(frag->data, data_pkt, sizeof(data_pkt));
@@ -230,7 +232,8 @@ static bool test_ack_reply(struct ieee802154_pkt_test *t)
 		return false;
 	}
 
-	k_sem_take(&driver_lock, 20);
+	k_yield();
+	k_sem_take(&driver_lock, K_SECONDS(1));
 
 	/* an ACK packet should be in current_pkt */
 	if (!current_pkt->frags) {
@@ -238,9 +241,9 @@ static bool test_ack_reply(struct ieee802154_pkt_test *t)
 		return false;
 	}
 
-	pkt_hexdump(net_pkt_ll(current_pkt), net_pkt_get_len(current_pkt));
+	pkt_hexdump(net_pkt_data(current_pkt), net_pkt_get_len(current_pkt));
 
-	if (!ieee802154_validate_frame(net_pkt_ll(current_pkt),
+	if (!ieee802154_validate_frame(net_pkt_data(current_pkt),
 				       net_pkt_get_len(current_pkt), &mpdu)) {
 		NET_ERR("*** ACK Reply is invalid\n");
 		return false;
@@ -264,7 +267,7 @@ static bool initialize_test_environment(void)
 
 	k_sem_reset(&driver_lock);
 
-	current_pkt = net_pkt_get_reserve_rx(0, K_FOREVER);
+	current_pkt = net_pkt_get_reserve_rx(K_FOREVER);
 	if (!current_pkt) {
 		NET_ERR("*** No buffer to allocate\n");
 		return false;
@@ -284,12 +287,12 @@ static bool initialize_test_environment(void)
 
 	NET_INFO("Fake IEEE 802.15.4 network interface ready\n");
 
-	ieee_addr_hexdump(iface->link_addr.addr, 8);
+	ieee_addr_hexdump(net_if_get_link_addr(iface)->addr, 8);
 
 	return true;
 }
 
-static void init_test(void)
+static void test_init(void)
 {
 	bool ret;
 
@@ -299,7 +302,7 @@ static void init_test(void)
 }
 
 
-static void parsing_ns_pkt(void)
+static void test_parsing_ns_pkt(void)
 {
 	bool ret;
 
@@ -308,7 +311,7 @@ static void parsing_ns_pkt(void)
 	zassert_true(ret, "NS parsed");
 }
 
-static void sending_ns_pkt(void)
+static void test_sending_ns_pkt(void)
 {
 	bool ret;
 
@@ -317,7 +320,7 @@ static void sending_ns_pkt(void)
 	zassert_true(ret, "NS sent");
 }
 
-static void parsing_ack_pkt(void)
+static void test_parsing_ack_pkt(void)
 {
 	bool ret;
 
@@ -326,7 +329,7 @@ static void parsing_ack_pkt(void)
 	zassert_true(ret, "ACK parsed");
 }
 
-static void replying_ack_pkt(void)
+static void test_replying_ack_pkt(void)
 {
 	bool ret;
 
@@ -335,7 +338,7 @@ static void replying_ack_pkt(void)
 	zassert_true(ret, "ACK replied");
 }
 
-static void parsing_beacon_pkt(void)
+static void test_parsing_beacon_pkt(void)
 {
 	bool ret;
 
@@ -344,7 +347,7 @@ static void parsing_beacon_pkt(void)
 	zassert_true(ret, "Beacon parsed");
 }
 
-static void parsing_sec_data_pkt(void)
+static void test_parsing_sec_data_pkt(void)
 {
 	bool ret;
 
@@ -356,13 +359,13 @@ static void parsing_sec_data_pkt(void)
 void test_main(void)
 {
 	ztest_test_suite(ieee802154_l2,
-			 ztest_unit_test(init_test),
-			 ztest_unit_test(parsing_ns_pkt),
-			 ztest_unit_test(sending_ns_pkt),
-			 ztest_unit_test(parsing_ack_pkt),
-			 ztest_unit_test(replying_ack_pkt),
-			 ztest_unit_test(parsing_beacon_pkt),
-			 ztest_unit_test(parsing_sec_data_pkt)
+			 ztest_unit_test(test_init),
+			 ztest_unit_test(test_parsing_ns_pkt),
+			 ztest_unit_test(test_sending_ns_pkt),
+			 ztest_unit_test(test_parsing_ack_pkt),
+			 ztest_unit_test(test_replying_ack_pkt),
+			 ztest_unit_test(test_parsing_beacon_pkt),
+			 ztest_unit_test(test_parsing_sec_data_pkt)
 		);
 
 	ztest_run_test_suite(ieee802154_l2);

@@ -1,8 +1,8 @@
 sample:
-  description: TBD
-  name: TBD
+  name: Blinky Sample
 tests:
-  - test:
-      build_only: true
-      platform_whitelist: arduino_101
-      tags: samples
+  test:
+    tags: LED gpio
+    # The filters below are from DTS
+    filter: LED0_GPIO_CONTROLLER
+    depends_on: gpio

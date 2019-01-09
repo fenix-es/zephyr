@@ -10,8 +10,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef __TRICKLE_H
-#define __TRICKLE_H
+#ifndef ZEPHYR_INCLUDE_NET_TRICKLE_H_
+#define ZEPHYR_INCLUDE_NET_TRICKLE_H_
 
 #include <stdbool.h>
 #include <zephyr/types.h>
@@ -26,6 +26,7 @@ extern "C" {
 /**
  * @brief Trickle algorithm library
  * @defgroup trickle Trickle Algorithm Library
+ * @ingroup networking
  * @{
  */
 
@@ -134,4 +135,4 @@ static inline bool net_trickle_is_running(struct net_trickle *trickle)
 }
 #endif
 
-#endif /* __TRICKLE_H */
+#endif /* ZEPHYR_INCLUDE_NET_TRICKLE_H_ */

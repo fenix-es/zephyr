@@ -30,17 +30,23 @@ enum {
 enum {
 	BT_DEV_ENABLE,
 	BT_DEV_READY,
-	BT_DEV_ID_STATIC_RANDOM,
+	BT_DEV_PRESET_ID,
+	BT_DEV_USER_ID_ADDR,
 	BT_DEV_HAS_PUB_KEY,
 	BT_DEV_PUB_KEY_BUSY,
 
 	BT_DEV_ADVERTISING,
+	BT_DEV_ADVERTISING_NAME,
+	BT_DEV_ADVERTISING_CONNECTABLE,
 	BT_DEV_KEEP_ADVERTISING,
 	BT_DEV_SCANNING,
 	BT_DEV_EXPLICIT_SCAN,
 	BT_DEV_ACTIVE_SCAN,
+	BT_DEV_SCAN_FILTER_DUP,
 
 	BT_DEV_RPA_VALID,
+
+	BT_DEV_ID_PENDING,
 
 #if defined(CONFIG_BT_BREDR)
 	BT_DEV_ISCAN,
@@ -51,6 +57,11 @@ enum {
 	/* Total number of flags - must be at the end of the enum */
 	BT_DEV_NUM_FLAGS,
 };
+
+/* Flags which should not be cleared upon HCI_Reset */
+#define BT_DEV_PERSISTENT_FLAGS (BIT(BT_DEV_ENABLE) | \
+				 BIT(BT_DEV_PRESET_ID) | \
+				 BIT(BT_DEV_USER_ID_ADDR))
 
 struct bt_dev_le {
 	/* LE features */
@@ -63,6 +74,15 @@ struct bt_dev_le {
 	u16_t			mtu;
 	struct k_sem		pkts;
 #endif /* CONFIG_BT_CONN */
+
+#if defined(CONFIG_BT_SMP)
+	/* Size of the the controller resolving list */
+	u8_t                    rl_size;
+	/* Number of entries in the resolving list. rl_entries > rl_size
+	 * means that host-side resolving is used.
+	 */
+	u8_t                    rl_entries;
+#endif /* CONFIG_BT_SMP */
 };
 
 #if defined(CONFIG_BT_BREDR)
@@ -84,8 +104,12 @@ struct bt_dev_br {
 
 /* State tracking for the local Bluetooth controller */
 struct bt_dev {
-	/* Local Identity Address */
-	bt_addr_le_t		id_addr;
+	/* Local Identity Address(es) */
+	bt_addr_le_t		id_addr[CONFIG_BT_ID_MAX];
+	u8_t                    id_count;
+
+	/* ID Address used for advertising */
+	u8_t                    adv_id;
 
 	/* Current local Random Address */
 	bt_addr_le_t		random_addr;
@@ -132,12 +156,6 @@ struct bt_dev {
 	struct k_fifo		rx_queue;
 #endif
 
-	/* Queue for high priority HCI events which may unlock waiters
-	 * in other threads. Such events include Number of Completed
-	 * Packets, as well as the Command Complete/Status events.
-	 */
-	struct k_fifo		rx_prio_queue;
-
 	/* Queue for outgoing HCI commands */
 	struct k_fifo		cmd_tx_queue;
 
@@ -146,30 +164,43 @@ struct bt_dev {
 
 #if defined(CONFIG_BT_PRIVACY)
 	/* Local Identity Resolving Key */
-	u8_t			irk[16];
+	u8_t			irk[CONFIG_BT_ID_MAX][16];
 
 	/* Work used for RPA rotation */
 	struct k_delayed_work rpa_update;
 #endif
+
+	/* Local Name */
+#if defined(CONFIG_BT_DEVICE_NAME_DYNAMIC)
+	char			name[CONFIG_BT_DEVICE_NAME_MAX];
+#endif
 };
 
 extern struct bt_dev bt_dev;
-extern const struct bt_storage *bt_storage;
 #if defined(CONFIG_BT_SMP) || defined(CONFIG_BT_BREDR)
 extern const struct bt_conn_auth_cb *bt_auth;
 #endif /* CONFIG_BT_SMP || CONFIG_BT_BREDR */
 
 bool bt_le_conn_params_valid(const struct bt_le_conn_param *param);
 
-struct net_buf *bt_hci_cmd_create(u16_t opcode, u8_t param_len);
-int bt_hci_cmd_send(u16_t opcode, struct net_buf *buf);
-int bt_hci_cmd_send_sync(u16_t opcode, struct net_buf *buf,
-			 struct net_buf **rsp);
-
 int bt_le_scan_update(bool fast_scan);
 
-bool bt_addr_le_is_bonded(const bt_addr_le_t *addr);
+bool bt_addr_le_is_bonded(u8_t id, const bt_addr_le_t *addr);
 
 int bt_send(struct net_buf *buf);
 
 u16_t bt_hci_get_cmd_opcode(struct net_buf *buf);
+
+/* Don't require everyone to include keys.h */
+struct bt_keys;
+void bt_id_add(struct bt_keys *keys);
+void bt_id_del(struct bt_keys *keys);
+
+int bt_setup_id_addr(void);
+
+void bt_dev_show_info(void);
+
+int bt_le_adv_start_internal(const struct bt_le_adv_param *param,
+			     const struct bt_data *ad, size_t ad_len,
+			     const struct bt_data *sd, size_t sd_len,
+			     const bt_addr_le_t *peer);

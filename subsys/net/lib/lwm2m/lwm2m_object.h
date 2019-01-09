@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2017 Linaro Limited
+ * Copyright (c) 2018 Foundries.io
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -50,36 +51,54 @@
 #include <net/coap.h>
 #include <net/lwm2m.h>
 #include <misc/printk.h>
+#include <misc/util.h>
 #include <kernel.h>
 
 /* #####/###/#####/### + NULL */
 #define MAX_RESOURCE_LEN	20
 
-/* operations */
-#define LWM2M_OP_NONE		0
-#define LWM2M_OP_READ		1
-#define LWM2M_OP_DISCOVER	2
-#define LWM2M_OP_WRITE		3
-#define LWM2M_OP_WRITE_ATTR	4
-#define LWM2M_OP_EXECUTE	5
-#define LWM2M_OP_DELETE		6
-#define LWM2M_OP_CREATE		7
-
-/* operation permission bits */
-#define LWM2M_OP_BIT(op)	(1 << (op - 1))
+/* operations / permissions */
+/* values from 0 to 7 can be used as permission checks */
+#define LWM2M_OP_READ		0
+#define LWM2M_OP_WRITE		1
+#define LWM2M_OP_CREATE		2
+#define LWM2M_OP_DELETE		3
+#define LWM2M_OP_EXECUTE	4
+#define LWM2M_FLAG_OPTIONAL	7
+/* values >7 aren't used for permission checks */
+#define LWM2M_OP_DISCOVER	8
+#define LWM2M_OP_WRITE_ATTR	9
 
 /* resource permissions */
-#define LWM2M_PERM_R		LWM2M_OP_BIT(LWM2M_OP_READ)
-#define LWM2M_PERM_W		(LWM2M_OP_BIT(LWM2M_OP_WRITE) | \
-				 LWM2M_OP_BIT(LWM2M_OP_CREATE))
-#define LWM2M_PERM_X		LWM2M_OP_BIT(LWM2M_OP_EXECUTE)
-#define LWM2M_PERM_RW		(LWM2M_OP_BIT(LWM2M_OP_READ) | \
-				 LWM2M_OP_BIT(LWM2M_OP_WRITE) | \
-				 LWM2M_OP_BIT(LWM2M_OP_CREATE))
-#define LWM2M_PERM_RWX		(LWM2M_OP_BIT(LWM2M_OP_READ) | \
-				 LWM2M_OP_BIT(LWM2M_OP_WRITE) | \
-				 LWM2M_OP_BIT(LWM2M_OP_CREATE) | \
-				 LWM2M_OP_BIT(LWM2M_OP_EXECUTE))
+#define LWM2M_PERM_R		BIT(LWM2M_OP_READ)
+#define LWM2M_PERM_R_OPT	(BIT(LWM2M_OP_READ) | \
+				 BIT(LWM2M_FLAG_OPTIONAL))
+#define LWM2M_PERM_W		(BIT(LWM2M_OP_WRITE) | \
+				 BIT(LWM2M_OP_CREATE))
+#define LWM2M_PERM_W_OPT	(BIT(LWM2M_OP_WRITE) | \
+				 BIT(LWM2M_OP_CREATE) | \
+				 BIT(LWM2M_FLAG_OPTIONAL))
+#define LWM2M_PERM_X		BIT(LWM2M_OP_EXECUTE)
+#define LWM2M_PERM_X_OPT	(BIT(LWM2M_OP_EXECUTE) | \
+				 BIT(LWM2M_FLAG_OPTIONAL))
+#define LWM2M_PERM_RW		(BIT(LWM2M_OP_READ) | \
+				 BIT(LWM2M_OP_WRITE) | \
+				 BIT(LWM2M_OP_CREATE))
+#define LWM2M_PERM_RW_OPT	(BIT(LWM2M_OP_READ) | \
+				 BIT(LWM2M_OP_WRITE) | \
+				 BIT(LWM2M_OP_CREATE) | \
+				 BIT(LWM2M_FLAG_OPTIONAL))
+#define LWM2M_PERM_RWX		(BIT(LWM2M_OP_READ) | \
+				 BIT(LWM2M_OP_WRITE) | \
+				 BIT(LWM2M_OP_CREATE) | \
+				 BIT(LWM2M_OP_EXECUTE))
+#define LWM2M_PERM_RWX_OPT	(BIT(LWM2M_OP_READ) | \
+				 BIT(LWM2M_OP_WRITE) | \
+				 BIT(LWM2M_OP_CREATE) | \
+				 BIT(LWM2M_OP_EXECUTE) | \
+				 BIT(LWM2M_FLAG_OPTIONAL))
+
+#define LWM2M_HAS_PERM(of, p)	((of->permissions & p) == p)
 
 /* resource types */
 #define LWM2M_RES_TYPE_NONE	0
@@ -124,11 +143,11 @@ struct lwm2m_obj_path {
 #define OBJ_FIELD_DATA(res_id, perm, type) \
 	OBJ_FIELD(res_id, perm, type, 1)
 
-#define OBJ_FIELD_MULTI_DATA(res_id, perm, type, multi_max) \
-	OBJ_FIELD(res_id, perm, type, multi_max)
-
 #define OBJ_FIELD_EXECUTE(res_id) \
 	OBJ_FIELD(res_id, X, NONE, 0)
+
+#define OBJ_FIELD_EXECUTE_OPT(res_id) \
+	OBJ_FIELD(res_id, X_OPT, NONE, 0)
 
 struct lwm2m_engine_obj_field {
 	u16_t  res_id;
@@ -142,14 +161,23 @@ typedef struct lwm2m_engine_obj_inst *
 typedef int (*lwm2m_engine_obj_delete_cb_t)(u16_t obj_inst_id);
 
 struct lwm2m_engine_obj {
+	/* object list */
 	sys_snode_t node;
-	u16_t obj_id;
+
+	/* object field definitions */
 	struct lwm2m_engine_obj_field *fields;
+
+	/* object event callbacks */
+	lwm2m_engine_obj_create_cb_t create_cb;
+	lwm2m_engine_obj_delete_cb_t delete_cb;
+	lwm2m_engine_user_cb_t user_create_cb;
+	lwm2m_engine_user_cb_t user_delete_cb;
+
+	/* object member data */
+	u16_t obj_id;
 	u16_t field_count;
 	u16_t instance_count;
 	u16_t max_instance_count;
-	lwm2m_engine_obj_create_cb_t create_cb;
-	lwm2m_engine_obj_delete_cb_t delete_cb;
 };
 
 #define INIT_OBJ_RES(res_var, index_var, id_val, multi_var, \
@@ -179,46 +207,80 @@ struct lwm2m_engine_obj {
 	INIT_OBJ_RES(res_var, index_var, id_val, NULL, NULL, 0, \
 		     NULL, NULL, NULL, ex_cb)
 
-struct lwm2m_engine_res_inst {
-	char path[MAX_RESOURCE_LEN]; /* 3/0/0 */
-	u16_t  res_id;
-	u8_t   *multi_count_var;
-	void  *data_ptr;
-	size_t data_len;
-	/* runtime field attributes (WRITE_ATTR) */
 
+#define LWM2M_ATTR_PMIN	0
+#define LWM2M_ATTR_PMAX	1
+#define LWM2M_ATTR_GT	2
+#define LWM2M_ATTR_LT	3
+#define LWM2M_ATTR_STEP	4
+#define NR_LWM2M_ATTR	5
+
+/* TODO: support multiple server (sec 5.4.2) */
+struct lwm2m_attr {
+	void *ref;
+
+	/* values */
+	union {
+		float32_value_t float_val;
+		s32_t int_val;
+	};
+
+	u8_t type;
+};
+
+struct lwm2m_engine_res_inst {
 	/* callbacks set by user code on obj instance */
 	lwm2m_engine_get_data_cb_t	read_cb;
 	lwm2m_engine_get_data_cb_t	pre_write_cb;
 	lwm2m_engine_set_data_cb_t	post_write_cb;
-	lwm2m_engine_exec_cb_t		execute_cb;
+	lwm2m_engine_user_cb_t		execute_cb;
+
+	u8_t  *multi_count_var;
+	void  *data_ptr;
+	u16_t data_len;
+	u16_t res_id;
+	u8_t  data_flags;
 };
 
 struct lwm2m_engine_obj_inst {
+	/* instance list */
 	sys_snode_t node;
-	char path[MAX_RESOURCE_LEN]; /* 3/0 */
+
 	struct lwm2m_engine_obj *obj;
-	u16_t obj_inst_id;
 	struct lwm2m_engine_res_inst *resources;
+
+	/* object instance member data */
+	u16_t obj_inst_id;
 	u16_t resource_count;
 };
 
 struct lwm2m_output_context {
-	struct coap_packet *out_cpkt;
-	u8_t writer_flags;	/* flags for reader/writer */
-	u8_t *outbuf;
-	u16_t outsize;
-	u32_t outlen;
-	u8_t mark_pos_ri;	/* mark pos for last resource instance */
 	const struct lwm2m_writer *writer;
+	struct coap_packet *out_cpkt;
+
+	/* current write fragment in net_buf chain */
+	struct net_buf *frag;
+
+	/* current write position in net_buf chain */
+	u16_t offset;
+
+	/* private output data */
+	void *user_data;
 };
 
 struct lwm2m_input_context {
-	struct coap_packet *in_cpkt;
-	u8_t *inbuf;
-	u16_t insize;
-	s32_t inpos;
 	const struct lwm2m_reader *reader;
+	struct coap_packet *in_cpkt;
+
+	/* current read position in net_buf chain */
+	struct net_buf *frag;
+	u16_t offset;
+
+	/* length of incoming coap/lwm2m payload */
+	u16_t payload_len;
+
+	/* length of incoming opaque */
+	u16_t opaque_len;
 };
 
 /* LWM2M format writer for the various formats supported */
@@ -227,6 +289,14 @@ struct lwm2m_writer {
 			    struct lwm2m_obj_path *path);
 	size_t (*put_end)(struct lwm2m_output_context *out,
 			  struct lwm2m_obj_path *path);
+	size_t (*put_begin_oi)(struct lwm2m_output_context *out,
+			       struct lwm2m_obj_path *path);
+	size_t (*put_end_oi)(struct lwm2m_output_context *out,
+			     struct lwm2m_obj_path *path);
+	size_t (*put_begin_r)(struct lwm2m_output_context *out,
+			      struct lwm2m_obj_path *path);
+	size_t (*put_end_r)(struct lwm2m_output_context *out,
+			    struct lwm2m_obj_path *path);
 	size_t (*put_begin_ri)(struct lwm2m_output_context *out,
 			       struct lwm2m_obj_path *path);
 	size_t (*put_end_ri)(struct lwm2m_output_context *out,
@@ -255,6 +325,9 @@ struct lwm2m_writer {
 	size_t (*put_bool)(struct lwm2m_output_context *out,
 			   struct lwm2m_obj_path *path,
 			   bool value);
+	size_t (*put_opaque)(struct lwm2m_output_context *out,
+			     struct lwm2m_obj_path *path,
+			     char *buf, size_t buflen);
 };
 
 struct lwm2m_reader {
@@ -270,6 +343,8 @@ struct lwm2m_reader {
 				 float64_value_t *value);
 	size_t (*get_bool)(struct lwm2m_input_context *in,
 			   bool *value);
+	size_t (*get_opaque)(struct lwm2m_input_context *in,
+			     u8_t *buf, size_t buflen, bool *last_block);
 };
 
 /* LWM2M engine context */
@@ -279,6 +354,25 @@ struct lwm2m_engine_context {
 	struct lwm2m_obj_path *path;
 	u8_t operation;
 };
+
+/* output user_data management functions */
+
+static inline void engine_set_out_user_data(struct lwm2m_output_context *out,
+					    void *user_data)
+{
+	out->user_data = user_data;
+}
+
+static inline void *engine_get_out_user_data(struct lwm2m_output_context *out)
+{
+	return out->user_data;
+}
+
+static inline void
+engine_clear_out_user_data(struct lwm2m_output_context *out)
+{
+	out->user_data = NULL;
+}
 
 /* inline multi-format write / read functions */
 
@@ -297,6 +391,46 @@ static inline size_t engine_put_end(struct lwm2m_output_context *out,
 {
 	if (out->writer->put_end) {
 		return out->writer->put_end(out, path);
+	}
+
+	return 0;
+}
+
+static inline size_t engine_put_begin_oi(struct lwm2m_output_context *out,
+					 struct lwm2m_obj_path *path)
+{
+	if (out->writer->put_begin_oi) {
+		return out->writer->put_begin_oi(out, path);
+	}
+
+	return 0;
+}
+
+static inline size_t engine_put_end_oi(struct lwm2m_output_context *out,
+				       struct lwm2m_obj_path *path)
+{
+	if (out->writer->put_end_oi) {
+		return out->writer->put_end_oi(out, path);
+	}
+
+	return 0;
+}
+
+static inline size_t engine_put_begin_r(struct lwm2m_output_context *out,
+					struct lwm2m_obj_path *path)
+{
+	if (out->writer->put_begin_r) {
+		return out->writer->put_begin_r(out, path);
+	}
+
+	return 0;
+}
+
+static inline size_t engine_put_end_r(struct lwm2m_output_context *out,
+				      struct lwm2m_obj_path *path)
+{
+	if (out->writer->put_end_r) {
+		return out->writer->put_end_r(out, path);
 	}
 
 	return 0;
@@ -378,6 +512,17 @@ static inline size_t engine_put_bool(struct lwm2m_output_context *out,
 	return out->writer->put_bool(out, path, value);
 }
 
+static inline size_t engine_put_opaque(struct lwm2m_output_context *out,
+				       struct lwm2m_obj_path *path,
+				       char *buf, size_t buflen)
+{
+	if (out->writer->put_opaque) {
+		return out->writer->put_opaque(out, path, buf, buflen);
+	}
+
+	return 0;
+}
+
 static inline size_t engine_get_s32(struct lwm2m_input_context *in,
 				    s32_t *value)
 {
@@ -412,6 +557,17 @@ static inline size_t engine_get_bool(struct lwm2m_input_context *in,
 				     bool *value)
 {
 	return in->reader->get_bool(in, value);
+}
+
+static inline size_t engine_get_opaque(struct lwm2m_input_context *in,
+				       u8_t *buf, size_t buflen,
+				       bool *last_block)
+{
+	if (in->reader->get_opaque) {
+		return in->reader->get_opaque(in, buf, buflen, last_block);
+	}
+
+	return 0;
 }
 
 #endif /* LWM2M_OBJECT_H_ */

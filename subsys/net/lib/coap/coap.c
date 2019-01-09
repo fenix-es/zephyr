@@ -4,10 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#if defined(CONFIG_NET_DEBUG_COAP)
-#define SYS_LOG_DOMAIN "coap"
-#define NET_LOG_ENABLED 1
-#endif
+#include <logging/log.h>
+LOG_MODULE_REGISTER(net_coap, CONFIG_COAP_LOG_LEVEL);
 
 #include <stdlib.h>
 #include <stddef.h>
@@ -106,7 +104,7 @@ static int decode_delta(struct option_context *context, u16_t opt,
 	if (opt == COAP_OPTION_EXT_13) {
 		u8_t val;
 
-		*hdr_len = 1;
+		*hdr_len = 1U;
 		context->frag = net_frag_read_u8(context->frag,
 						 context->offset,
 						 &context->offset,
@@ -121,7 +119,7 @@ static int decode_delta(struct option_context *context, u16_t opt,
 	} else if (opt == COAP_OPTION_EXT_14) {
 		u16_t val;
 
-		*hdr_len = 2;
+		*hdr_len = 2U;
 		context->frag = net_frag_read_be16(context->frag,
 						   context->offset,
 						   &context->offset,
@@ -217,6 +215,19 @@ static int parse_option(const struct coap_packet *cpkt,
 	}
 
 	if (option) {
+		/*
+		 * Make sure the option data will fit into the value field of
+		 * coap_option.
+		 * NOTE: To expand the size of the value field set:
+		 * CONFIG_COAP_EXTENDED_OPTIONS_LEN=y
+		 * CONFIG_COAP_EXTENDED_OPTIONS_LEN_VALUE=<size>
+		 */
+		if (len > sizeof(option->value)) {
+			NET_ERR("%u is > sizeof(coap_option->value)(%zu)!",
+				len, sizeof(option->value));
+			return -ENOMEM;
+		}
+
 		option->delta = context->delta + delta;
 		option->len = len;
 		context->frag = net_frag_read(context->frag, context->offset,
@@ -257,8 +268,8 @@ static int parse_options(const struct coap_packet *cpkt,
 		return r;
 	}
 
-	num = 0;
-	opt_len = 0;
+	num = 0U;
+	opt_len = 0U;
 
 	while (true) {
 		struct coap_option *option;
@@ -369,6 +380,22 @@ int coap_packet_parse(struct coap_packet *cpkt, struct net_pkt *pkt,
 	return 0;
 }
 
+#define append(pkt, type, value)					\
+	do {								\
+		if (!net_pkt_append_##type##_timeout(pkt, value,	\
+						     PKT_WAIT_TIME)) {	\
+			return -ENOMEM;					\
+		}							\
+	} while (0)
+
+#define append_all(pkt, size, value)					\
+	do {								\
+		if (!net_pkt_append_all(pkt, size, value,		\
+					PKT_WAIT_TIME)) {		\
+			return -ENOMEM;					\
+		}							\
+	} while (0)
+
 int coap_packet_init(struct coap_packet *cpkt, struct net_pkt *pkt,
 		     u8_t ver, u8_t type, u8_t tokenlen,
 		     u8_t *token, u8_t code, u16_t id)
@@ -380,7 +407,7 @@ int coap_packet_init(struct coap_packet *cpkt, struct net_pkt *pkt,
 		return -EINVAL;
 	}
 
-	memset(cpkt, 0, sizeof(*cpkt));
+	(void)memset(cpkt, 0, sizeof(*cpkt));
 	cpkt->pkt = pkt;
 	cpkt->frag = pkt->frags;
 	cpkt->offset = 0;
@@ -390,9 +417,9 @@ int coap_packet_init(struct coap_packet *cpkt, struct net_pkt *pkt,
 	hdr |= (type & 0x3) << 4;
 	hdr |= tokenlen & 0xF;
 
-	net_pkt_append_u8(pkt, hdr);
-	net_pkt_append_u8(pkt, code);
-	net_pkt_append_be16(pkt, id);
+	append(pkt, u8, hdr);
+	append(pkt, u8, code);
+	append(pkt, be16, id);
 
 	if (token && tokenlen) {
 		res = net_pkt_append_all(pkt, tokenlen, token, PKT_WAIT_TIME);
@@ -411,7 +438,7 @@ int coap_pending_init(struct coap_pending *pending,
 		      const struct coap_packet *request,
 		      const struct sockaddr *addr)
 {
-	memset(pending, 0, sizeof(*pending));
+	(void)memset(pending, 0, sizeof(*pending));
 	pending->id = coap_header_get_id(request);
 	memcpy(&pending->addr, addr, sizeof(*addr));
 
@@ -458,7 +485,7 @@ static inline bool is_addr_unspecified(const struct sockaddr *addr)
 	}
 
 	if (addr->sa_family == AF_INET6) {
-		return net_is_ipv6_addr_unspecified(
+		return net_ipv6_is_addr_unspecified(
 			&(net_sin6(addr)->sin6_addr));
 	} else if (addr->sa_family == AF_INET) {
 		return net_sin(addr)->sin_addr.s4_addr32[0] == 0;
@@ -521,22 +548,27 @@ struct coap_pending *coap_pending_next_to_expire(
 	return found;
 }
 
-#define LAST_TIMEOUT (2345 * 4)
+/* TODO: random generated initial ACK timeout
+ * ACK_TIMEOUT < INIT_ACK_TIMEOUT < ACK_TIMEOUT * ACK_RANDOM_FACTOR
+ * where ACK_TIMEOUT = 2 and ACK_RANDOM_FACTOR = 1.5 by default
+ * Ref: https://tools.ietf.org/html/rfc7252#section-4.8
+ */
+#define INIT_ACK_TIMEOUT	CONFIG_COAP_INIT_ACK_TIMEOUT_MS
 
 static s32_t next_timeout(s32_t previous)
 {
 	switch (previous) {
-	case 0:
-		return 2345;
-	case 2345:
-		return 2345 * 2;
-	case (2345 * 2):
-		return LAST_TIMEOUT;
-	case LAST_TIMEOUT:
-		return LAST_TIMEOUT;
+	case INIT_ACK_TIMEOUT:
+	case (INIT_ACK_TIMEOUT * 2):
+	case (INIT_ACK_TIMEOUT * 4):
+		return previous << 1;
+	case (INIT_ACK_TIMEOUT * 8):
+		/* equal value is returned to end retransmit */
+		return previous;
 	}
 
-	return 2345;
+	/* initial or unrecognized */
+	return INIT_ACK_TIMEOUT;
 }
 
 bool coap_pending_cycle(struct coap_pending *pending)
@@ -571,9 +603,9 @@ static bool uri_path_eq(const struct coap_packet *cpkt,
 			u8_t opt_num)
 {
 	u8_t i;
-	u8_t j = 0;
+	u8_t j = 0U;
 
-	for (i = 0; i < opt_num && path[j]; i++) {
+	for (i = 0U; i < opt_num && path[j]; i++) {
 		if (options[i].delta != COAP_OPTION_URI_PATH) {
 			continue;
 		}
@@ -649,7 +681,7 @@ int coap_handle_request(struct coap_packet *cpkt,
 		code = coap_header_get_code(cpkt);
 		method = method_from_code(resource, code);
 		if (!method) {
-			return 0;
+			return -EPERM;
 		}
 
 		return method(resource, cpkt);
@@ -671,7 +703,7 @@ unsigned int coap_option_value_to_int(const struct coap_option *option)
 		return (option->value[2] << 0) | (option->value[1] << 8) |
 			(option->value[0] << 16);
 	case 4:
-		return (option->value[2] << 0) | (option->value[2] << 8) |
+		return (option->value[3] << 0) | (option->value[2] << 8) |
 			(option->value[1] << 16) | (option->value[0] << 24);
 	default:
 		return 0;
@@ -683,7 +715,7 @@ unsigned int coap_option_value_to_int(const struct coap_option *option)
 static int get_observe_option(const struct coap_packet *cpkt)
 {
 	struct coap_option option = {};
-	u16_t count = 1;
+	u16_t count = 1U;
 	int r;
 
 	r = coap_find_options(cpkt, COAP_OPTION_OBSERVE, &option, count);
@@ -769,9 +801,7 @@ void coap_reply_init(struct coap_reply *reply,
 
 void coap_reply_clear(struct coap_reply *reply)
 {
-	reply->id = 0;
-	reply->tkl = 0;
-	reply->reply = NULL;
+	(void)memset(reply, 0, sizeof(*reply));
 }
 
 int coap_resource_notify(struct coap_resource *resource)
@@ -860,10 +890,6 @@ static bool sockaddr_equal(const struct sockaddr *a,
 		const struct sockaddr_in6 *a6 = net_sin6(a);
 		const struct sockaddr_in6 *b6 = net_sin6(b);
 
-		if (a6->sin6_scope_id != b6->sin6_scope_id) {
-			return false;
-		}
-
 		if (a6->sin6_port != b6->sin6_port) {
 			return false;
 		}
@@ -894,7 +920,8 @@ struct coap_observer *coap_find_observer_by_addr(
 
 int coap_packet_append_payload_marker(struct coap_packet *cpkt)
 {
-	return net_pkt_append_u8(cpkt->pkt, COAP_MARKER) ? 0 : -EINVAL;
+	return net_pkt_append_u8_timeout(cpkt->pkt, COAP_MARKER,
+					 PKT_WAIT_TIME) ? 0 : -EINVAL;
 }
 
 int coap_packet_append_payload(struct coap_packet *cpkt, u8_t *payload,
@@ -912,7 +939,7 @@ static u8_t encode_extended_option(u16_t num, u8_t *opt, u16_t *ext)
 {
 	if (num < COAP_OPTION_EXT_13) {
 		*opt = num;
-		*ext = 0;
+		*ext = 0U;
 
 		return 0;
 	} else if (num < COAP_OPTION_EXT_269) {
@@ -946,18 +973,18 @@ static int encode_option(struct coap_packet *cpkt, u16_t code,
 	option_header_set_delta(&opt, opt_delta);
 	option_header_set_len(&opt, opt_len);
 
-	net_pkt_append_u8(cpkt->pkt, opt);
+	append(cpkt->pkt, u8, opt);
 
 	if (delta_size == 1) {
-		net_pkt_append_u8(cpkt->pkt, (u8_t) delta_ext);
+		append(cpkt->pkt, u8, (u8_t) delta_ext);
 	} else if (delta_size == 2) {
-		net_pkt_append_be16(cpkt->pkt, delta_ext);
+		append(cpkt->pkt, be16, delta_ext);
 	}
 
 	if (len_size == 1) {
-		net_pkt_append_u8(cpkt->pkt, (u8_t) len_ext);
+		append(cpkt->pkt, u8, (u8_t) len_ext);
 	} else if (delta_size == 2) {
-		net_pkt_append_be16(cpkt->pkt, len_ext);
+		append(cpkt->pkt, be16, len_ext);
 	}
 
 	if (len && value) {
@@ -986,14 +1013,6 @@ int coap_packet_append_option(struct coap_packet *cpkt, u16_t code,
 
 	if (len && !value) {
 		return -EINVAL;
-	}
-
-	if (len > 13) {
-#if !defined(CONFIG_COAP_EXTENDED_OPTIONS_LEN)
-		NET_ERR("Enable CONFIG_COAP_EXTENDED_OPTIONS_LEN to support "
-			"if length is more than 13");
-		return -EINVAL;
-#endif
 	}
 
 	if (code < cpkt->last_delta) {
@@ -1030,21 +1049,21 @@ int coap_append_option_int(struct coap_packet *cpkt, u16_t code,
 	u8_t data[4], len;
 
 	if (val == 0) {
-		data[0] = 0;
-		len = 0;
+		data[0] = 0U;
+		len = 0U;
 	} else if (val < 0xFF) {
 		data[0] = (u8_t) val;
-		len = 1;
+		len = 1U;
 	} else if (val < 0xFFFF) {
 		sys_put_be16(val, data);
-		len = 2;
+		len = 2U;
 	} else if (val < 0xFFFFFF) {
-		sys_put_be16(val, data);
-		data[2] = val >> 16;
-		len = 3;
+		sys_put_be16(val, &data[1]);
+		data[0] = val >> 16;
+		len = 3U;
 	} else {
 		sys_put_be32(val, data);
-		len = 4;
+		len = 4U;
 	}
 
 	return coap_packet_append_option(cpkt, code, data, len);
@@ -1074,7 +1093,7 @@ int coap_find_options(const struct coap_packet *cpkt, u16_t code,
 		return r;
 	}
 
-	opt_len = 0;
+	opt_len = 0U;
 	count = 0;
 
 	while (context.delta <= code && count < veclen) {
@@ -1224,16 +1243,15 @@ u16_t coap_header_get_id(const struct coap_packet *cpkt)
 struct net_buf *coap_packet_get_payload(const struct coap_packet *cpkt,
 					u16_t *offset, u16_t *len)
 {
-	struct net_buf *frag;
+	struct net_buf *frag = NULL;
 	u16_t coap_pkt_len;
-
-	frag = NULL;
-	*offset = 0xffff;
-	*len = 0;
 
 	if (!cpkt || !cpkt->pkt || !offset || !len) {
 		return NULL;
 	}
+
+	*offset = 0xffff;
+	*len = 0U;
 
 	coap_pkt_len = get_coap_packet_len(cpkt->pkt);
 
@@ -1268,7 +1286,7 @@ int coap_append_block1_option(struct coap_packet *cpkt,
 			      struct coap_block_context *ctx)
 {
 	u16_t bytes = coap_block_size_to_bytes(ctx->block_size);
-	unsigned int val = 0;
+	unsigned int val = 0U;
 	int r;
 
 	if (is_request(cpkt)) {

@@ -23,16 +23,29 @@ K_THREAD_STACK_ARRAY_DEFINE(app_stack, 3, STACKSIZE);
 
 struct k_thread app_thread_id[3];
 
-struct k_mem_domain app_domain[2];
+__kernel struct k_mem_domain app_domain[2];
 
 /* the start address of the MPU region needs to align with its size */
+#ifdef CONFIG_ARM
 u8_t __aligned(32) app0_buf[32];
 u8_t __aligned(32) app1_buf[32];
+#else
+u8_t __aligned(4096) app0_buf[4096];
+u8_t __aligned(4096) app1_buf[4096];
+#endif
 
 K_MEM_PARTITION_DEFINE(app0_parts0, app0_buf, sizeof(app0_buf),
 		       K_MEM_PARTITION_P_RW_U_RW);
+#if defined(CONFIG_X86) || \
+	((defined(CONFIG_ARMV8_M_BASELINE) || \
+		defined(CONFIG_ARMV8_M_MAINLINE)) \
+		&& defined(CONFIG_CPU_HAS_ARM_MPU))
+K_MEM_PARTITION_DEFINE(app0_parts1, app1_buf, sizeof(app1_buf),
+		       K_MEM_PARTITION_P_RO_U_RO);
+#else
 K_MEM_PARTITION_DEFINE(app0_parts1, app1_buf, sizeof(app1_buf),
 		       K_MEM_PARTITION_P_RW_U_RO);
+#endif
 
 struct k_mem_partition *app0_parts[] = {
 	&app0_parts0,
@@ -41,8 +54,16 @@ struct k_mem_partition *app0_parts[] = {
 
 K_MEM_PARTITION_DEFINE(app1_parts0, app1_buf, sizeof(app1_buf),
 		       K_MEM_PARTITION_P_RW_U_RW);
+#if defined(CONFIG_X86) || \
+	((defined(CONFIG_ARMV8_M_BASELINE) || \
+		defined(CONFIG_ARMV8_M_MAINLINE)) \
+		&& defined(CONFIG_CPU_HAS_ARM_MPU))
+K_MEM_PARTITION_DEFINE(app1_parts1, app0_buf, sizeof(app0_buf),
+		       K_MEM_PARTITION_P_RO_U_RO);
+#else
 K_MEM_PARTITION_DEFINE(app1_parts1, app0_buf, sizeof(app0_buf),
 		       K_MEM_PARTITION_P_RW_U_RO);
+#endif
 
 struct k_mem_partition *app1_parts[] = {
 	&app1_parts0,

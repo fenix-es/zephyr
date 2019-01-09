@@ -18,7 +18,7 @@
 #include <stddef.h>
 #include <toolchain.h>
 #include <kernel_structs.h>
-#include <nano_internal.h>
+#include <kernel_internal.h>
 
 /**
  *
@@ -34,6 +34,9 @@ void _PrepC(void)
 	_bss_zero();
 #ifdef CONFIG_XIP
 	_data_copy();
+#endif
+#if defined(CONFIG_RISCV_SOC_INTERRUPT_INIT)
+	soc_interrupt_init();
 #endif
 	_Cstart();
 	CODE_UNREACHABLE;

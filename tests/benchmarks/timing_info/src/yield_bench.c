@@ -13,7 +13,6 @@
 K_SEM_DEFINE(yield_sem, 0, 1);
 
 /* To time thread creation*/
-#define STACK_SIZE 500
 extern K_THREAD_STACK_DEFINE(my_stack_area, STACK_SIZE);
 extern K_THREAD_STACK_DEFINE(my_stack_area_0, STACK_SIZE);
 extern struct k_thread my_thread;
@@ -26,8 +25,8 @@ extern u32_t __read_swap_end_time_value;
 extern u64_t __common_var_swap_end_time;
 extern char sline[];
 
-u64_t thread_sleep_start_time;
-u64_t thread_sleep_end_time;
+extern u64_t thread_sleep_start_time;
+extern u64_t thread_sleep_end_time;
 u64_t thread_start_time;
 u64_t thread_end_time;
 static u32_t count;
@@ -39,7 +38,6 @@ k_tid_t yield0_tid;
 k_tid_t yield1_tid;
 void yield_bench(void)
 {
-
 	/* Thread yield*/
 
 	yield0_tid = k_thread_create(&my_thread, my_stack_area,
@@ -55,9 +53,10 @@ void yield_bench(void)
 				     0 /*priority*/, 0, 0);
 
 	/*read the time of start of the sleep till the swap happens */
-	__read_swap_end_time_value = 1;
+	__read_swap_end_time_value = 1U;
 
-	thread_sleep_start_time =   GET_CURRENT_TIME();
+	TIMING_INFO_PRE_READ();
+	thread_sleep_start_time =   TIMING_INFO_OS_GET_TIME();
 	k_sleep(1000);
 	thread_sleep_end_time =   ((u32_t)__common_var_swap_end_time);
 
@@ -75,12 +74,14 @@ void yield_bench(void)
 void thread_yield0_test(void *p1, void *p2, void *p3)
 {
 	k_sem_take(&yield_sem, 10);
-	thread_start_time =  GET_CURRENT_TIME();
+	TIMING_INFO_PRE_READ();
+	thread_start_time =  TIMING_INFO_OS_GET_TIME();
 	while (count != 1000) {
 		count++;
 		k_yield();
 	}
-	thread_end_time =  GET_CURRENT_TIME();
+	TIMING_INFO_PRE_READ();
+	thread_end_time =  TIMING_INFO_OS_GET_TIME();
 	k_thread_abort(yield1_tid);
 }
 

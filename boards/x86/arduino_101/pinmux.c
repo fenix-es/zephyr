@@ -6,14 +6,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include <kernel.h>
-#include <board.h>
+#include <soc.h>
 #include <device.h>
 #include <init.h>
 #include <pinmux.h>
 #include <sys_io.h>
 #include "pinmux/pinmux.h"
 
-#include "pinmux_quark_mcu.h"
+#include <pinmux_quark_mcu.h>
 
 /*
  * This is the full pinmap that we have available on the board for configuration
@@ -116,7 +116,7 @@ static void _pinmux_defaults(u32_t base)
 	u32_t mux_config[PINMUX_MAX_REGISTERS] = { 0, 0, 0, 0, 0 };
 	int i = 0;
 
-#if !defined(CONFIG_SPI_1) && !defined(CONFIG_SPI_CS_GPIO)
+#if !defined(CONFIG_SPI_1)
 	PIN_CONFIG(mux_config,  0,  PINMUX_FUNC_B);
 #endif
 	PIN_CONFIG(mux_config,  1,  PINMUX_FUNC_B);
@@ -136,9 +136,7 @@ static void _pinmux_defaults(u32_t base)
 	PIN_CONFIG(mux_config, 42,  PINMUX_FUNC_B);
 	PIN_CONFIG(mux_config, 43,  PINMUX_FUNC_B);
 	PIN_CONFIG(mux_config, 44,  PINMUX_FUNC_B);
-#ifndef CONFIG_SPI_CS_GPIO
 	PIN_CONFIG(mux_config, 45,  PINMUX_FUNC_B);
-#endif
 #endif
 	PIN_CONFIG(mux_config, 55,  PINMUX_FUNC_B);
 	PIN_CONFIG(mux_config, 56,  PINMUX_FUNC_B);

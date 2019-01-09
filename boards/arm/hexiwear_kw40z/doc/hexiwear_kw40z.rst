@@ -86,14 +86,19 @@ serial communication over USB.
 To use the pyOCD tools with OpenSDA, follow the instructions in the
 :ref:`nxp_opensda_pyocd` page using the `DAPLink Hexiwear Firmware`_. The pyOCD
 tools are not the default for this board, therefore it is necessary to set
-``OPENSDA_FW=daplink`` explicitly when you invoke ``make flash`` or ``make
-debug``.
+``OPENSDA_FW=daplink`` explicitly in the environment when programming and
+debugging.
 
 To use the Segger J-Link tools with OpenSDA, follow the instructions in the
 :ref:`nxp_opensda_jlink` page using the `Segger J-Link OpenSDA V2.1 Firmware`_.
 The Segger J-Link tools are the default for this board, therefore it is not
-necessary to set ``OPENSDA_FW=jlink`` explicitly when you invoke ``make
-debug``.
+necessary to set ``OPENSDA_FW=jlink`` explicitly when using the usual
+programming and debugging mechanisms.
+
+With these mechanisms, applications for the ``hexiwear_kw40z`` board
+configuration can be built and flashed in the usual way (see
+:ref:`build_an_application` and :ref:`application_run` for more
+details).
 
 Because `Segger RTT`_ is required for a console to KW40Z, the J-Link tools are
 recommended.
@@ -102,23 +107,20 @@ Flashing
 ========
 
 The Segger J-Link firmware does not support command line flashing, therefore
-the ``make flash`` build target is not supported.
+the usual ``flash`` build target is not supported.
 
 Debugging
 =========
 
 This example uses the :ref:`hello_world` sample with the
-:ref:`nxp_opensda_jlink` tools. Use the ``make debug`` build target to build
-your Zephyr application, invoke the J-Link GDB server, attach a GDB client, and
-program your Zephyr application to flash. It will leave you at a gdb prompt.
+:ref:`nxp_opensda_jlink` tools. This builds the Zephyr application,
+invokes the J-Link GDB server, attaches a GDB client, and programs the
+application to flash. It will leave you at a gdb prompt.
 
-.. code-block:: console
-
-   $ cd <zephyr_root_path>
-   $ . zephyr-env.sh
-   $ cd samples/hello_world/
-   $ make BOARD=hexiwear_kw40z debug
-
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: hexiwear_kw40z
+   :goals: debug
 
 In a second terminal, open telnet:
 
@@ -141,16 +143,16 @@ Continue program execution in GDB, then in the telnet terminal you should see:
 
 
 .. _KW40Z Website:
-   http://www.nxp.com/products/microcontrollers-and-processors/arm-processors/kinetis-cortex-m-mcus/w-series-wireless-m0-plus-m4/kinetis-kw40z-2.4-ghz-dual-mode-ble-and-802.15.4-wireless-radio-microcontroller-mcu-based-on-arm-cortex-m0-plus-core:KW40Z
+   https://www.nxp.com/products/processors-and-microcontrollers/arm-based-processors-and-mcus/kinetis-cortex-m-mcus/w-serieswireless-conn.m0-plus-m4/kinetis-kw40z-2.4-ghz-dual-mode-ble-and-802.15.4-wireless-radio-microcontroller-mcu-based-on-arm-cortex-m0-plus-core:KW40Z
 
 .. _KW40Z Datasheet:
-   http://www.nxp.com/assets/documents/data/en/data-sheets/MKW40Z160.pdf
+   https://www.nxp.com/docs/en/data-sheet/MKW40Z160.pdf
 
 .. _KW40Z Reference Manual:
-   http://www.nxp.com/assets/documents/data/en/reference-manuals/MKW40Z160RM.pdf
+   https://www.nxp.com/docs/en/reference-manual/MKW40Z160RM.pdf
 
 .. _Segger RTT:
-    https://www.segger.com/jlink-rtt.html
+   https://www.segger.com/products/debug-probes/j-link/technology/about-real-time-transfer/
 
 .. _DAPLink Hexiwear Firmware:
    https://github.com/MikroElektronika/HEXIWEAR/blob/master/HW/HEXIWEAR_DockingStation/HEXIWEAR_DockingStation_DAPLINK_FW.bin

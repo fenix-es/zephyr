@@ -25,7 +25,7 @@ which are not described here.
 
 :file:`doc`
     Zephyr technical documentation source files and tools used to
-    generate the http://zephyrproject.org/doc web content.
+    generate the https://docs.zephyrproject.org web content.
 
 :file:`drivers`
     Device driver code.
@@ -59,6 +59,9 @@ which are not described here.
 :file:`scripts`
     Various programs and other files used to build and test Zephyr
     applications.
+
+:file:`cmake`
+    Additional build scripts needed to build Zephyr.
 
 :file:`subsys`
     Subsystems of Zephyr, including:

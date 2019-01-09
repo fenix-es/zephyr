@@ -5,9 +5,8 @@ Device Drivers and Device Model
 
 Introduction
 ************
-The Zephyr kernel supports a variety of device drivers. The specific set of
-device drivers available for an application's board configuration varies
-according to the associated hardware components and device driver software.
+The Zephyr kernel supports a variety of device drivers. Whether a
+driver is available depends on the board and the driver.
 
 The Zephyr device model provides a consistent device model for configuring the
 drivers that are part of a system. The device model is responsible
@@ -92,6 +91,13 @@ split into read-only and runtime-mutable parts. At a high level we have:
         void *driver_data;
   };
 
+  struct device_config {
+	char    *name;
+	int (*init)(struct device *device);
+	const void *config_info;
+    [...]
+  };
+
 The ``config`` member is for read-only configuration data set at build time. For
 example, base memory mapped IO addresses, IRQ line numbers, or other fixed
 physical characteristics of the device. This is the ``config_info`` structure
@@ -109,7 +115,7 @@ build time. The next section describes this in more detail.
 Subsystems and API Structures
 *****************************
 
-Most drivers will be targeting a device-independent subsystem API.
+Most drivers will be implementing a device-independent subsystem API.
 Applications can simply program to that generic API, and application
 code is not specific to any particular driver implementation.
 
@@ -140,17 +146,6 @@ A subsystem API definition typically looks like this:
         api = (struct subsystem_api *)device->driver_api;
         api->do_that(device, foo, bar);
   }
-
-In general, it's best to use ``__ASSERT()`` macros instead of
-propagating return values unless the failure is expected to occur during
-the normal course of operation (such as a storage device full). Bad
-parameters, programming errors, consistency checks, pathological/unrecoverable
-failures, etc., should be handled by assertions.
-
-When it is appropriate to return error conditions for the caller to check, 0
-should be returned on success and a POSIX errno.h code returned on failure.
-See https://github.com/zephyrproject-rtos/zephyr/wiki/Naming-Conventions#return-codes for
-details about this.
 
 A driver implementing a particular subsystem will define the real implementation
 of these APIs, and populate an instance of subsystem_api structure:
@@ -253,7 +248,7 @@ Then when the particular instance is declared:
   static struct my_driver_data_0;
 
   DEVICE_AND_API_INIT(my_driver_0, MY_DRIVER_0_NAME, my_driver_init,
-                      &my_driver_data_0, &my_driver_config_0, SECONDARY,
+                      &my_driver_data_0, &my_driver_config_0, POST_KERNEL,
                       MY_DRIVER_0_PRIORITY, &my_driver_api_funcs);
 
   #endif /* CONFIG_MY_DRIVER_0 */
@@ -272,14 +267,14 @@ executed. Any driver will specify one of five initialization levels:
 ``PRE_KERNEL_1``
         Used for devices that have no dependencies, such as those that rely
         solely on hardware present in the processor/SOC. These devices cannot
-        use any kernel services during configuration, since the services are
+        use any kernel services during configuration, since the kernel services are
         not yet available. The interrupt subsystem will be configured however
         so it's OK to set up interrupts. Init functions at this level run on the
         interrupt stack.
 
 ``PRE_KERNEL_2``
         Used for devices that rely on the initialization of devices initialized
-        as part of the PRIMARY level. These devices cannot use any kernel
+        as part of the ``PRE_KERNEL_1`` level. These devices cannot use any kernel
         services during configuration, since the kernel services are not yet
         available. Init functions at this level run on the interrupt stack.
 
@@ -305,16 +300,33 @@ leading zeroes or sign (e.g. 32), or an equivalent symbolic name (e.g.
 System Drivers
 **************
 
-In some cases you may just need to run a function at boot. Special ``SYS_INIT``
-macros exist that map to ``DEVICE_INIT()`` or ``DEVICE_INIT_PM()`` calls.
+In some cases you may just need to run a function at boot. Special ``SYS_*``
+macros exist that map to ``DEVICE_*INIT()`` calls.
 For ``SYS_INIT()`` there are no config or runtime data structures and there
 isn't a way
 to later get a device pointer by name. The same policies for initialization
 level and priority apply.
 
-For ``SYS_INIT_PM()`` you can obtain pointers by name, see
+For ``SYS_DEVICE_DEFINE()`` you can obtain pointers by name, see
 :ref:`power management <power_management>` section.
 
 :c:func:`SYS_INIT()`
 
-:c:func:`SYS_INIT_PM()`
+:c:func:`SYS_DEVICE_DEFINE()`
+
+Error handling
+**************
+
+In general, it's best to use ``__ASSERT()`` macros instead of
+propagating return values unless the failure is expected to occur
+during the normal course of operation (such as a storage device
+full). Bad parameters, programming errors, consistency checks,
+pathological/unrecoverable failures, etc., should be handled by
+assertions.
+
+When it is appropriate to return error conditions for the caller to
+check, 0 should be returned on success and a POSIX errno.h code
+returned on failure.  See
+https://github.com/zephyrproject-rtos/zephyr/wiki/Naming-Conventions#return-codes
+for details about this.
+

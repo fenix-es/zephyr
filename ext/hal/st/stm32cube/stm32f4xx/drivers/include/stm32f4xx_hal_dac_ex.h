@@ -2,8 +2,6 @@
   ******************************************************************************
   * @file    stm32f4xx_hal_dac.h
   * @author  MCD Application Team
-  * @version V1.7.1
-  * @date    14-April-2017
   * @brief   Header file of DAC HAL Extension module.
   ******************************************************************************
   * @attention
@@ -175,7 +173,7 @@ void HAL_DACEx_DMAUnderrunCallbackCh2(DAC_HandleTypeDef* hdac);
   */
 void DAC_DMAConvCpltCh2(DMA_HandleTypeDef *hdma);
 void DAC_DMAErrorCh2(DMA_HandleTypeDef *hdma);
-void DAC_DMAHalfConvCpltCh2(DMA_HandleTypeDef *hdma); 
+void DAC_DMAHalfConvCpltCh2(DMA_HandleTypeDef *hdma);
 /**
   * @}
   */
@@ -191,7 +189,7 @@ void DAC_DMAHalfConvCpltCh2(DMA_HandleTypeDef *hdma);
 /**
   * @}
   */
-  
+
 #ifdef __cplusplus
 }
 #endif

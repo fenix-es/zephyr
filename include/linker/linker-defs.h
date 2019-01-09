@@ -16,11 +16,13 @@
  *   section
  */
 
-#ifndef _LINKERDEFS_H
-#define _LINKERDEFS_H
+#ifndef ZEPHYR_INCLUDE_LINKER_LINKER_DEFS_H_
+#define ZEPHYR_INCLUDE_LINKER_LINKER_DEFS_H_
 
 #include <toolchain.h>
 #include <linker/sections.h>
+#include <misc/util.h>
+#include <offsets.h>
 
 /* include platform dependent linker-defs */
 #ifdef CONFIG_X86
@@ -34,6 +36,8 @@
 #elif defined(CONFIG_RISCV32)
 /* Nothing yet to include */
 #elif defined(CONFIG_XTENSA)
+/* Nothing yet to include */
+#elif defined(CONFIG_ARCH_POSIX)
 /* Nothing yet to include */
 #else
 #error Arch not supported.
@@ -49,7 +53,7 @@
  */
 #ifdef CONFIG_DEVICE_POWER_MANAGEMENT
 #define DEVICE_COUNT \
-	((__device_init_end - __device_init_start) / _DEVICE_STRUCT_SIZE)
+	((__device_init_end - __device_init_start) / _DEVICE_STRUCT_SIZEOF)
 #define DEV_BUSY_SZ	(((DEVICE_COUNT + 31) / 32) * 4)
 #define DEVICE_BUSY_BITFIELD()			\
 		FILL(0x00) ;			\
@@ -96,20 +100,42 @@
  * their shell commands are automatically initialized by the kernel.
  */
 
-#define	SHELL_INIT_SECTIONS()		\
-		__shell_cmd_start = .;		\
-		KEEP(*(".shell_*"));		\
-		__shell_cmd_end = .;
+#define	SHELL_INIT_SECTIONS()				\
+		__shell_module_start = .;		\
+		KEEP(*(".shell_module_*"));		\
+		__shell_module_end = .;			\
+		__shell_cmd_start = .;			\
+		KEEP(*(".shell_cmd_*"));		\
+		__shell_cmd_end = .;			\
+
+/*
+ * link in shell initialization objects for all modules that use shell and
+ * their shell commands are automatically initialized by the kernel.
+ */
 
 #ifdef CONFIG_APPLICATION_MEMORY
-#define KERNEL_INPUT_SECTION(sect)	libzephyr.a (sect) kernel/lib.a (sect)
-#define APP_INPUT_SECTION(sect)	\
-	*(EXCLUDE_FILE (*libzephyr.a *kernel/lib.a) sect)
+/*
+ * KERNELSPACE_OBJECT_FILES is a space-separated list of object files
+ * and libraries that belong in kernelspace.
+ */
+#define MAYBE_EXCLUDE_SOME_FILES EXCLUDE_FILE (KERNELSPACE_OBJECT_FILES)
 #else
-#define KERNEL_INPUT_SECTION(sect)	*(sect)
-#define APP_INPUT_SECTION(sect)		*(sect)
-#endif
+#define MAYBE_EXCLUDE_SOME_FILES
+#endif /* CONFIG_APPLICATION_MEMORY */
 
+/*
+ * APP_INPUT_SECTION should be invoked on sections that should be in
+ * 'app' space. KERNEL_INPUT_SECTION should be invoked on sections
+ * that should be in 'kernel' space.
+ *
+ * NB: APP_INPUT_SECTION must be invoked before
+ * KERNEL_INPUT_SECTION. If it is not all sections will end up in
+ * kernelspace.
+ */
+#define APP_INPUT_SECTION(sect)    *(MAYBE_EXCLUDE_SOME_FILES sect)
+#define KERNEL_INPUT_SECTION(sect) *(sect)
+
+#define APP_SMEM_SECTION() KEEP(*(SORT(data_smem_[_a-zA-Z0-9]*)))
 
 #ifdef CONFIG_X86 /* LINKER FILES: defines used by linker script */
 /* Should be moved to linker-common-defs.h */
@@ -145,6 +171,21 @@ GDATA(__data_num_words)
 #else /* ! _ASMLANGUAGE */
 
 #include <zephyr/types.h>
+/*
+ * Memory owned by the kernel, to be used as shared memory between
+ * application threads.
+ *
+ * The following are extern symbols from the linker. This enables
+ * the dynamic k_mem_domain and k_mem_partition creation and alignment
+ * to the section produced in the linker.
+
+ * The policy for this memory will be to initially configure all of it as
+ * kernel / supervisor thread accessible.
+ */
+extern char _app_smem_start[];
+extern char _app_smem_end[];
+extern char _app_smem_size[];
+extern char _app_smem_rom_start[];
 
 #ifdef CONFIG_APPLICATION_MEMORY
 /* Memory owned by the application. Start and end will be aligned for memory
@@ -159,7 +200,7 @@ extern char __app_ram_size[];
 #endif
 
 /* Memory owned by the kernel. Start and end will be aligned for memory
- * management/protection hardware for the target architecture..
+ * management/protection hardware for the target architecture.
  *
  * Consists of all kernel-side globals, all kernel objects, all thread stacks,
  * and all currently unused RAM.  If CONFIG_APPLICATION_MEMORY is not enabled,
@@ -198,6 +239,9 @@ extern char _image_rom_start[];
 extern char _image_rom_end[];
 extern char _image_rom_size[];
 
+/* Includes all ROMable data, i.e. the size of the output image file. */
+extern char _flash_used[];
+
 /* datas, bss, noinit */
 extern char _image_ram_start[];
 extern char _image_ram_end[];
@@ -214,6 +258,41 @@ extern char _vector_end[];
 /* end address of image, used by newlib for the heap */
 extern char _end[];
 
+#ifdef CONFIG_CCM_BASE_ADDRESS
+extern char __ccm_data_rom_start[];
+extern char __ccm_start[];
+extern char __ccm_data_start[];
+extern char __ccm_data_end[];
+extern char __ccm_bss_start[];
+extern char __ccm_bss_end[];
+extern char __ccm_noinit_start[];
+extern char __ccm_noinit_end[];
+extern char __ccm_end[];
+#endif /* CONFIG_CCM_BASE_ADDRESS */
+
+/* Used by the Security Attribution Unit to configure the
+ * Non-Secure Callable region.
+ */
+#ifdef CONFIG_ARM_FIRMWARE_HAS_SECURE_ENTRY_FUNCS
+extern char __sg_start[];
+extern char __sg_end[];
+extern char __sg_size[];
+#endif /* CONFIG_ARM_FIRMWARE_HAS_SECURE_ENTRY_FUNCS */
+
+/*
+ * Non-cached kernel memory region, currently only available on ARM Cortex-M7
+ * with a MPU. Start and end will be aligned for memory management/protection
+ * hardware for the target architecture.
+ *
+ * All the functions with '__nocache' keyword will be placed into this
+ * section.
+ */
+#ifdef CONFIG_NOCACHE_MEMORY
+extern char _nocache_ram_start[];
+extern char _nocache_ram_end[];
+extern char _nocache_ram_size[];
+#endif /* CONFIG_NOCACHE_MEMORY */
+
 #endif /* ! _ASMLANGUAGE */
 
-#endif /* _LINKERDEFS_H */
+#endif /* ZEPHYR_INCLUDE_LINKER_LINKER_DEFS_H_ */

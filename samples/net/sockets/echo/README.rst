@@ -25,11 +25,11 @@ Building and Running
 
 Build the Zephyr version of the sockets/echo application like this:
 
-.. code-block:: console
-
-    $ cd $ZEPHYR_BASE/samples/net/sockets/echo
-    $ make pristine
-    $ make BOARD=<board_to_use>
+.. zephyr-app-commands::
+   :zephyr-app: samples/net/sockets/echo
+   :board: <board_to_use>
+   :goals: build
+   :compact:
 
 ``board_to_use`` defaults to ``qemu_x86``. In this case, you can run the
 application in QEMU using ``make run``. If you used another BOARD, you
@@ -76,3 +76,15 @@ To test:
 
 As can be seen, the behavior of the application is the same as the Zephyr
 version.
+
+Running on cc3220sf_launchxl
+============================
+
+See the note on Provisioning and Fast Connect in :ref:`cc3220sf_launchxl`.
+
+After having connected to an Access Point using the sample WiFi shell,
+the IP address will be printed to the console upon running this echo
+application.
+
+Proceed to test as above.
+

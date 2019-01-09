@@ -11,10 +11,9 @@
 #define _LINKER
 #define _ASMLANGUAGE
 
-#include <autoconf.h>
 #include <linker/sections.h>
 
-#if defined(CONFIG_NSIM)
+#if defined(CONFIG_UART_NSIM)
 	EXTERN(_VectorTable)
 #endif
 
@@ -35,6 +34,25 @@
 	#endif
 #endif
 
+#ifdef CONFIG_ARC_MPU_ENABLE
+	#if CONFIG_ARC_MPU_VER == 2
+		#define MPU_MIN_SIZE 2048
+	#elif CONFIG_ARC_MPU_VER == 3
+		#define MPU_MIN_SIZE 32
+	#endif
+	#define MPU_MIN_SIZE_ALIGN . = ALIGN(MPU_MIN_SIZE );
+	#if defined(CONFIG_MPU_REQUIRES_POWER_OF_TWO_ALIGNMENT)
+		#define MPU_ALIGN(region_size) \
+			. = ALIGN(MPU_MIN_SIZE); \
+			. = ALIGN( 1 << LOG2CEIL(region_size))
+	#else
+		#define MPU_ALIGN(region_size) \
+			. = ALIGN(MPU_MIN_SIZE)
+	#endif
+#else
+	#define MPU_MIN_SIZE_ALIGN
+#endif
+
 #if defined(CONFIG_XIP)
 	#define _DATA_IN_ROM __data_rom_start
 #else
@@ -42,7 +60,7 @@
 #endif
 
 OUTPUT_ARCH(arc)
-ENTRY(__start)
+ENTRY(CONFIG_KERNEL_ENTRY)
 
 MEMORY {
 #ifdef FLASH_START
@@ -62,6 +80,9 @@ MEMORY {
 }
 
 SECTIONS {
+
+#include <linker/rel-sections.ld>
+
 	GROUP_START(ROMABLE_REGION)
 
 	SECTION_PROLOGUE(_TEXT_SECTION_NAME,,ALIGN(1024)) {
@@ -74,15 +95,15 @@ SECTIONS {
 		KEEP(*(".exc_vector_table.*"))
 		KEEP(*(IRQ_VECTOR_TABLE))
 
-#ifdef CONFIG_GEN_SW_ISR_TABLE
-		KEEP(*(SW_ISR_TABLE))
-#endif
 		*(.text)
 		*(".text.*")
 		*(.gnu.linkonce.t.*)
 
-		_image_text_end = .;
+#include <linker/kobject-text.ld>
 	} GROUP_LINK_IN(ROMABLE_REGION)
+
+	_image_text_end = .;
+	_image_rodata_start = .;
 
 #include <linker/common-rom.ld>
 
@@ -93,50 +114,115 @@ SECTIONS {
 		*(".rodata.*")
 		*(.gnu.linkonce.r.*)
 
+#ifdef CONFIG_SOC_RODATA_LD
+#include <soc-rodata.ld>
+#endif
+
 #ifdef CONFIG_CUSTOM_RODATA_LD
 /* Located in project source directory */
 #include <custom-rodata.ld>
 #endif
 
+#include <linker/kobject-rom.ld>
+
 	} GROUP_LINK_IN(ROMABLE_REGION)
 
+	_image_rodata_end = .;
+	MPU_MIN_SIZE_ALIGN
 	_image_rom_end = .;
-	__data_rom_start = ALIGN(4);	/* XIP imaged DATA ROM start addr */
+	_image_rom_size = _image_rom_end - _image_rom_start;
 
 	GROUP_END(ROMABLE_REGION)
 
 	GROUP_START(RAMABLE_REGION)
 
-	SECTION_DATA_PROLOGUE(_DATA_SECTION_NAME,,) {
+#include <app_data_alignment.ld>
 
-/* when XIP, .text is in ROM, but vector table must be at start of .data */
-
+#if defined(CONFIG_APP_SHARED_MEM)
+#if defined(CONFIG_MPU_REQUIRES_POWER_OF_TWO_ALIGNMENT)
+#define APP_SHARED_ALIGN MPU_MIN_SIZE_ALIGN
+		#include <app_smem.ld>
+#else
+	SECTION_PROLOGUE(_APP_SMEM_SECTION_NAME, (OPTIONAL),)
+	{
+		MPU_MIN_SIZE_ALIGN
 		_image_ram_start = .;
-		__data_ram_start = .;
-		*(.data)
-		*(".data.*")
-
-#ifdef CONFIG_CUSTOM_RWDATA_LD
-/* Located in project source directory */
-#include <custom-rwdata.ld>
-#endif
-
+		_app_smem_start = .;
+		APP_SMEM_SECTION()
+		MPU_MIN_SIZE_ALIGN
+		_app_smem_end = .;
 	} GROUP_DATA_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
 
-#include <linker/common-ram.ld>
+#endif  /* CONFIG_MPU_REQUIRES_POWER_OF_TWO_ALIGNMENT */
 
-	__data_ram_end = .;
+	_app_smem_size = _app_smem_end - _app_smem_start;
+	_app_smem_rom_start = LOADADDR(_APP_SMEM_SECTION_NAME);
+#endif /* CONFIG_APP_SHARED_MEM */
+
+#ifdef CONFIG_APPLICATION_MEMORY
+	SECTION_DATA_PROLOGUE(_APP_DATA_SECTION_NAME, (OPTIONAL),)
+	{
+		MPU_MIN_SIZE_ALIGN
+#include <app_data_alignment.ld>
+
+		__app_ram_start = .;
+		__app_data_ram_start = .;
+		_image_ram_start = .;
+		APP_INPUT_SECTION(.data)
+		APP_INPUT_SECTION(".data.*")
+		__app_data_ram_end = .;
+	} GROUP_DATA_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
+
+	__app_data_rom_start = LOADADDR(_APP_DATA_SECTION_NAME);
+
+	SECTION_PROLOGUE(_APP_BSS_SECTION_NAME, (NOLOAD OPTIONAL),)
+	{
+		__app_bss_start = .;
+		APP_INPUT_SECTION(.bss)
+		APP_INPUT_SECTION(".bss.*")
+		APP_INPUT_SECTION(COMMON)
+		__app_bss_end = .;
+	} GROUP_DATA_LINK_IN(RAMABLE_REGION, RAMABLE_REGION)
+
+	__app_bss_num_words = (__app_bss_end - __app_bss_start) >> 2;
+
+	SECTION_PROLOGUE(_APP_NOINIT_SECTION_NAME, (NOLOAD OPTIONAL),)
+	{
+		APP_INPUT_SECTION(.noinit)
+		APP_INPUT_SECTION(".noinit.*")
+
+	} GROUP_DATA_LINK_IN(RAMABLE_REGION, RAMABLE_REGION)
+
+	__app_last_address_used = .;
+
+	/* Pad out application ram area to make MPU friendly */
+	SECTION_PROLOGUE(app_pad, (NOLOAD OPTIONAL),)
+	{
+		. = ALIGN(_app_data_align);
+		MPU_MIN_SIZE_ALIGN
+	} GROUP_DATA_LINK_IN(RAMABLE_REGION, RAMABLE_REGION)
+	__app_ram_end = .;
+	__app_ram_size = __app_ram_end - __app_ram_start;
+#endif /* CONFIG_APPLICATION_MEMORY */
 
 	SECTION_DATA_PROLOGUE(_BSS_SECTION_NAME,(NOLOAD),) {
+		MPU_MIN_SIZE_ALIGN
 		/*
 		 * For performance, BSS section is assumed to be 4 byte aligned and
 		 * a multiple of 4 bytes
 		 */
 		. = ALIGN(4);
 		__bss_start = .;
-		*(.bss)
-		*(".bss.*")
-		COMMON_SYMBOLS
+
+#ifndef CONFIG_APPLICATION_MEMORY
+		_image_ram_start = .;
+#endif
+		__kernel_ram_start = .;
+		KERNEL_INPUT_SECTION(.bss)
+		KERNEL_INPUT_SECTION(".bss.*")
+		KERNEL_INPUT_SECTION(COMMON)
+		*(".kernel_bss.*")
+
 		/*
 		 * BSP clears this memory in words only and doesn't clear any
 		 * potential left over bytes.
@@ -149,26 +235,52 @@ SECTIONS {
 		 * This section is used for non-initialized objects that
 		 * will not be cleared during the boot process.
 		 */
-		*(.noinit)
-		*(".noinit.*")
+		 KERNEL_INPUT_SECTION(.noinit)
+		 KERNEL_INPUT_SECTION(".noinit.*")
+		 *(".kernel_noinit.*")
+
+#ifdef CONFIG_SOC_NOINIT_LD
+#include <soc-noinit.ld>
+#endif
 
 	} GROUP_LINK_IN(RAMABLE_REGION)
+
+	SECTION_DATA_PROLOGUE(_DATA_SECTION_NAME,,) {
+
+/* when XIP, .text is in ROM, but vector table must be at start of .data */
+		__data_ram_start = .;
+		KERNEL_INPUT_SECTION(.data)
+		KERNEL_INPUT_SECTION(".data.*")
+		*(".kernel.*")
+
+#ifdef CONFIG_SOC_RWDATA_LD
+#include <soc-rwdata.ld>
+#endif
+
+#ifdef CONFIG_CUSTOM_RWDATA_LD
+/* Located in project source directory */
+#include <custom-rwdata.ld>
+#endif
+
+	} GROUP_DATA_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
+
+	__data_rom_start = LOADADDR(_DATA_SECTION_NAME);
+
+#include <linker/common-ram.ld>
+#include <linker/kobject.ld>
+
+	__data_ram_end = .;
+
+	MPU_MIN_SIZE_ALIGN
 
 	/* Define linker symbols */
 	_image_ram_end = .;
 	_end = .; /* end of image */
 
+	__kernel_ram_end = .;
+	__kernel_ram_size = __kernel_ram_end - __kernel_ram_start;
+
 	GROUP_END(RAMABLE_REGION)
-
-	/* Data Closely Coupled Memory (DCCM) */
-	GROUP_START(DCCM)
-	GROUP_END(DCCM)
-
-	SECTION_PROLOGUE(initlevel_error, (OPTIONAL),)
-	{
-		DEVICE_INIT_UNDEFINED_SECTION()
-	}
-	ASSERT(SIZEOF(initlevel_error) == 0, "Undefined initialization levels used.")
 
 #ifdef CONFIG_CUSTOM_SECTIONS_LD
 /* Located in project source directory */
@@ -178,4 +290,14 @@ SECTIONS {
 #ifdef CONFIG_GEN_ISR_TABLES
 #include <linker/intlist.ld>
 #endif
+
+#include <linker/debug-sections.ld>
+
+
+    SECTION_PROLOGUE(.ARC.attributes, 0,)
+	{
+	KEEP(*(.ARC.attributes))
+	KEEP(*(.gnu.attributes))
+	}
+
 	}

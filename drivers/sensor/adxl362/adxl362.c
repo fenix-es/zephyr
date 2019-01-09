@@ -14,74 +14,70 @@
 #include <misc/byteorder.h>
 #include <misc/__assert.h>
 #include <spi.h>
+#include <logging/log.h>
 
 #include "adxl362.h"
 
+#define LOG_LEVEL CONFIG_SENSOR_LOG_LEVEL
+LOG_MODULE_REGISTER(ADXL362);
 
 static struct adxl362_data adxl362_data;
 
-static int adxl362_set_reg(struct device *dev, u16_t register_value,
-			   u8_t register_address, u8_t count)
+static int adxl362_reg_access(struct adxl362_data *ctx, u8_t cmd,
+			      u8_t reg_addr, void *data, size_t length)
 {
-	struct adxl362_data *adxl362_data = dev->driver_data;
-	u8_t buffer[4];
-	int ret;
+	u8_t access[2] = { cmd, reg_addr };
+	const struct spi_buf buf[2] = {
+		{
+			.buf = access,
+			.len = 2
+		},
+		{
+			.buf = data,
+			.len = length
+		}
+	};
+	struct spi_buf_set tx = {
+		.buffers = buf,
+	};
 
-	buffer[0] = ADXL362_WRITE_REG;
-	buffer[1] = register_address;
-	buffer[2] = (register_value & 0x00FF);
-	buffer[3] = (register_value >> 8);
+	if (cmd == ADXL362_READ_REG) {
+		const struct spi_buf_set rx = {
+			.buffers = buf,
+			.count = 2
+		};
 
-	ret = spi_slave_select(adxl362_data->spi,
-			       adxl362_data->spi_slave);
-	if (ret) {
-		SYS_LOG_DBG("spi_slave_select FAIL %d\n", ret);
-		return ret;
+		tx.count = 1;
+
+		return spi_transceive(ctx->spi, &ctx->spi_cfg, &tx, &rx);
 	}
 
-	ret = spi_transceive(adxl362_data->spi, buffer, count + 2,
-			     buffer, count + 2);
-	if (ret) {
-		SYS_LOG_DBG("spi_transceive FAIL %d\n", ret);
-		return ret;
-	}
+	tx.count = 2;
 
-	return 0;
+	return spi_write(ctx->spi, &ctx->spi_cfg, &tx);
 }
 
-static int adxl362_get_reg(struct device *dev, u8_t *read_buf,
-			   u8_t register_address, u8_t count)
+static inline int adxl362_set_reg(struct device *dev, u16_t register_value,
+				  u8_t register_address, u8_t count)
 {
 	struct adxl362_data *adxl362_data = dev->driver_data;
-	u8_t buffer[4];
-	u8_t index;
-	int ret;
 
-	buffer[0] = ADXL362_READ_REG;
-	buffer[1] = register_address;
-	for (index = 0; index < count; index++) {
-		buffer[index + 2] = read_buf[index];
-	}
+	return adxl362_reg_access(adxl362_data,
+				  ADXL362_WRITE_REG,
+				  register_address,
+				  &register_value,
+				  count);
+}
 
-	ret = spi_slave_select(adxl362_data->spi,
-			       adxl362_data->spi_slave);
-	if (ret) {
-		SYS_LOG_DBG("spi_slave_select FAIL %d\n", ret);
-		return ret;
-	}
+static inline int adxl362_get_reg(struct device *dev, u8_t *read_buf,
+				  u8_t register_address, u8_t count)
+{
+	struct adxl362_data *adxl362_data = dev->driver_data;
 
-	ret = spi_transceive(adxl362_data->spi, buffer, count + 2,
-			     buffer, count + 2);
-	if (ret) {
-		SYS_LOG_DBG("spi_transceive FAIL %d\n", ret);
-		return ret;
-	}
-
-	for (index = 0; index < count; index++) {
-		read_buf[index] = buffer[index + 2];
-	}
-
-	return 0;
+	return adxl362_reg_access(adxl362_data,
+				  ADXL362_READ_REG,
+				  register_address,
+				  read_buf, count);
 }
 
 static int adxl362_software_reset(struct device *dev)
@@ -220,7 +216,7 @@ static int axl362_acc_config(struct device *dev, enum sensor_channel chan,
 
 		range_reg = adxl362_range_to_reg_val(sensor_ms2_to_g(val));
 		if (range_reg < 0) {
-			SYS_LOG_DBG("invalid range requested.");
+			LOG_DBG("invalid range requested.");
 			return -ENOTSUP;
 		}
 
@@ -236,7 +232,7 @@ static int axl362_acc_config(struct device *dev, enum sensor_channel chan,
 		out_rate = adxl362_freq_to_odr_val(val->val1,
 						   val->val2 / 1000);
 		if (out_rate < 0) {
-			SYS_LOG_DBG("invalid output rate.");
+			LOG_DBG("invalid output rate.");
 			return -ENOTSUP;
 		}
 
@@ -245,7 +241,7 @@ static int axl362_acc_config(struct device *dev, enum sensor_channel chan,
 	break;
 #endif
 	default:
-		SYS_LOG_DBG("Accel attribute not supported.");
+		LOG_DBG("Accel attribute not supported.");
 		return -ENOTSUP;
 	}
 
@@ -263,7 +259,7 @@ static int adxl362_attr_set(struct device *dev, enum sensor_channel chan,
 		return axl362_acc_config(dev, chan, attr, val);
 
 	default:
-		SYS_LOG_DBG("attr_set() not supported on this channel.");
+		LOG_DBG("attr_set() not supported on this channel.");
 		return -ENOTSUP;
 	}
 
@@ -468,7 +464,7 @@ static int adxl362_channel_get(struct device *dev,
 		val->val1 = data->acc_z / 1000;
 		val->val2 = (data->acc_z % 1000) * 1000;
 		break;
-	case SENSOR_CHAN_TEMP: /* Temperature in degrees Celsius. */
+	case SENSOR_CHAN_DIE_TEMP: /* Temperature in degrees Celsius. */
 		val->val1 = data->temp / 1000;
 		val->val2 = (data->temp % 1000) * 1000;
 		break;
@@ -575,29 +571,20 @@ static int adxl362_chip_init(struct device *dev)
  */
 static int adxl362_init(struct device *dev)
 {
+	const struct adxl362_config *config = dev->config->config_info;
 	struct adxl362_data *data = dev->driver_data;
-	struct spi_config spi_config;
 	u8_t value;
-	int ret;
 
-	data->spi = device_get_binding(CONFIG_ADXL362_SPI_DEV_NAME);
+	data->spi = device_get_binding(config->spi_name);
 	if (!data->spi) {
-		SYS_LOG_DBG("spi device not found: %s",
-			    CONFIG_ADXL362_SPI_DEV_NAME);
+		LOG_DBG("spi device not found: %s", config->spi_name);
 		return -EINVAL;
 	}
 
-	spi_config.config = SPI_WORD(8) | SPI_TRANSFER_MSB | SPI_MODE_CPOL |
-			    SPI_MODE_CPHA;
-	spi_config.max_sys_freq = 4;
-	ret = spi_configure(data->spi, &spi_config);
-	if (ret) {
-		SYS_LOG_DBG("SPI configuration error %s %d\n",
-			    CONFIG_ADXL362_SPI_DEV_NAME, ret);
-		return ret;
-	}
-
-	data->spi_slave = CONFIG_ADXL362_SPI_DEV_SLAVE;
+	data->spi_cfg.operation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB |
+		SPI_MODE_CPOL | SPI_MODE_CPHA;
+	data->spi_cfg.frequency = config->spi_max_frequency;
+	data->spi_cfg.slave = config->spi_slave;
 
 	adxl362_software_reset(dev);
 
@@ -613,6 +600,12 @@ static int adxl362_init(struct device *dev)
 	return 0;
 }
 
-DEVICE_AND_API_INIT(adxl362, CONFIG_ADXL362_DEV_NAME, adxl362_init,
-		    &adxl362_data, NULL, POST_KERNEL,
+static const struct adxl362_config adxl362_config = {
+	.spi_name = DT_ADXL362_SPI_DEV_NAME,
+	.spi_slave = DT_ADXL362_SPI_DEV_SLAVE,
+	.spi_max_frequency = DT_ADXL362_SPI_MAX_FREQUENCY,
+};
+
+DEVICE_AND_API_INIT(adxl362, DT_ADXL362_DEV_NAME, adxl362_init,
+		    &adxl362_data, &adxl362_config, POST_KERNEL,
 		    CONFIG_SENSOR_INIT_PRIORITY, &adxl362_api_funcs);

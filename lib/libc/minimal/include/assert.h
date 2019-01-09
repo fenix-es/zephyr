@@ -5,13 +5,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef __INC_assert_h__
-#define __INC_assert_h__
+#ifndef ZEPHYR_LIB_LIBC_MINIMAL_INCLUDE_ASSERT_H_
+#define ZEPHYR_LIB_LIBC_MINIMAL_INCLUDE_ASSERT_H_
 
 #include <misc/__assert.h>
 
 #ifdef __cplusplus
 extern "C" {
+#else
+#define static_assert _Static_assert
 #endif
 
 #ifndef NDEBUG
@@ -20,7 +22,7 @@ extern "C" {
 #endif
 #else
 #ifndef assert
-#define assert(test)
+#define assert(test) ((void)0)
 #endif
 #endif
 
@@ -28,4 +30,4 @@ extern "C" {
 }
 #endif
 
-#endif  /* __INC_assert_h__ */
+#endif  /* ZEPHYR_LIB_LIBC_MINIMAL_INCLUDE_ASSERT_H_ */

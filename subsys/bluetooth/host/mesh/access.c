@@ -16,6 +16,7 @@
 #include <bluetooth/mesh.h>
 
 #define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_MESH_DEBUG_ACCESS)
+#define LOG_MODULE_NAME bt_mesh_access
 #include "common/log.h"
 
 #include "mesh.h"
@@ -32,9 +33,15 @@ static u16_t dev_primary_addr;
 static const struct {
 	const u16_t id;
 	int (*const init)(struct bt_mesh_model *model, bool primary);
-} const model_init[] = {
-	{ BT_MESH_MODEL_ID_CFG_SRV, bt_mesh_conf_init },
-	{ BT_MESH_MODEL_ID_HEALTH_SRV, bt_mesh_health_init },
+} model_init[] = {
+	{ BT_MESH_MODEL_ID_CFG_SRV, bt_mesh_cfg_srv_init },
+	{ BT_MESH_MODEL_ID_HEALTH_SRV, bt_mesh_health_srv_init },
+#if defined(CONFIG_BT_MESH_CFG_CLI)
+	{ BT_MESH_MODEL_ID_CFG_CLI, bt_mesh_cfg_cli_init },
+#endif
+#if defined(CONFIG_BT_MESH_HEALTH_CLI)
+	{ BT_MESH_MODEL_ID_HEALTH_CLI, bt_mesh_health_cli_init },
+#endif
 };
 
 void bt_mesh_model_foreach(void (*func)(struct bt_mesh_model *mod,
@@ -94,23 +101,169 @@ s32_t bt_mesh_model_pub_period_get(struct bt_mesh_model *mod)
 	return period >> mod->pub->period_div;
 }
 
+static s32_t next_period(struct bt_mesh_model *mod)
+{
+	struct bt_mesh_model_pub *pub = mod->pub;
+	u32_t elapsed, period;
+
+	period = bt_mesh_model_pub_period_get(mod);
+	if (!period) {
+		return 0;
+	}
+
+	elapsed = k_uptime_get_32() - pub->period_start;
+
+	BT_DBG("Publishing took %ums", elapsed);
+
+	if (elapsed > period) {
+		BT_WARN("Publication sending took longer than the period");
+		/* Return smallest positive number since 0 means disabled */
+		return K_MSEC(1);
+	}
+
+	return period - elapsed;
+}
+
+static void publish_sent(int err, void *user_data)
+{
+	struct bt_mesh_model *mod = user_data;
+	s32_t delay;
+
+	BT_DBG("err %d", err);
+
+	if (mod->pub->count) {
+		delay = BT_MESH_PUB_TRANSMIT_INT(mod->pub->retransmit);
+	} else {
+		delay = next_period(mod);
+	}
+
+	if (delay) {
+		BT_DBG("Publishing next time in %dms", delay);
+		k_delayed_work_submit(&mod->pub->timer, delay);
+	}
+}
+
+static const struct bt_mesh_send_cb pub_sent_cb = {
+	.end = publish_sent,
+};
+
+static int publish_retransmit(struct bt_mesh_model *mod)
+{
+	NET_BUF_SIMPLE_DEFINE(sdu, BT_MESH_TX_SDU_MAX);
+	struct bt_mesh_model_pub *pub = mod->pub;
+	struct bt_mesh_app_key *key;
+	struct bt_mesh_msg_ctx ctx = {
+		.addr = pub->addr,
+		.send_ttl = pub->ttl,
+	};
+	struct bt_mesh_net_tx tx = {
+		.ctx = &ctx,
+		.src = bt_mesh_model_elem(mod)->addr,
+		.xmit = bt_mesh_net_transmit_get(),
+		.friend_cred = pub->cred,
+	};
+
+	key = bt_mesh_app_key_find(pub->key);
+	if (!key) {
+		return -EADDRNOTAVAIL;
+	}
+
+	tx.sub = bt_mesh_subnet_get(key->net_idx);
+
+	ctx.net_idx = key->net_idx;
+	ctx.app_idx = key->app_idx;
+
+	net_buf_simple_add_mem(&sdu, pub->msg->data, pub->msg->len);
+
+	pub->count--;
+
+	return bt_mesh_trans_send(&tx, &sdu, &pub_sent_cb, mod);
+}
+
 static void mod_publish(struct k_work *work)
 {
 	struct bt_mesh_model_pub *pub = CONTAINER_OF(work,
 						     struct bt_mesh_model_pub,
 						     timer.work);
 	s32_t period_ms;
+	int err;
 
 	BT_DBG("");
 
 	period_ms = bt_mesh_model_pub_period_get(pub->mod);
 	BT_DBG("period %u ms", period_ms);
-	if (period_ms) {
-		k_delayed_work_submit(&pub->timer, period_ms);
+
+	if (pub->count) {
+		err = publish_retransmit(pub->mod);
+		if (err) {
+			BT_ERR("Failed to retransmit (err %d)", err);
+
+			pub->count = 0;
+
+			/* Continue with normal publication */
+			if (period_ms) {
+				k_delayed_work_submit(&pub->timer, period_ms);
+			}
+		}
+
+		return;
 	}
 
-	if (pub->func) {
-		pub->func(pub->mod);
+	if (!period_ms) {
+		return;
+	}
+
+	__ASSERT_NO_MSG(pub->update != NULL);
+
+	pub->period_start = k_uptime_get_32();
+
+	err = pub->update(pub->mod);
+	if (err) {
+		BT_ERR("Failed to update publication message");
+		return;
+	}
+
+	err = bt_mesh_model_publish(pub->mod);
+	if (err) {
+		BT_ERR("Publishing failed (err %d)", err);
+	}
+
+	if (pub->count) {
+		/* Retransmissions also control the timer */
+		k_delayed_work_cancel(&pub->timer);
+	}
+}
+
+struct bt_mesh_elem *bt_mesh_model_elem(struct bt_mesh_model *mod)
+{
+	return &dev_comp->elem[mod->elem_idx];
+}
+
+struct bt_mesh_model *bt_mesh_model_get(bool vnd, u8_t elem_idx, u8_t mod_idx)
+{
+	struct bt_mesh_elem *elem;
+
+	if (elem_idx >= dev_comp->elem_count) {
+		BT_ERR("Invalid element index %u", elem_idx);
+		return NULL;
+	}
+
+	elem = &dev_comp->elem[elem_idx];
+
+	if (vnd) {
+		if (mod_idx >= elem->vnd_model_count) {
+			BT_ERR("Invalid vendor model index %u", mod_idx);
+			return NULL;
+		}
+
+		return &elem->vnd_models[mod_idx];
+	} else {
+		if (mod_idx >= elem->model_count) {
+			BT_ERR("Invalid SIG model index %u", mod_idx);
+			return NULL;
+		}
+
+		return &elem->models[mod_idx];
 	}
 }
 
@@ -119,8 +272,6 @@ static void mod_init(struct bt_mesh_model *mod, struct bt_mesh_elem *elem,
 {
 	int i;
 
-	mod->elem = elem;
-
 	if (mod->pub) {
 		mod->pub->mod = mod;
 		k_delayed_work_init(&mod->pub->timer, mod_publish);
@@ -128,6 +279,13 @@ static void mod_init(struct bt_mesh_model *mod, struct bt_mesh_elem *elem,
 
 	for (i = 0; i < ARRAY_SIZE(mod->keys); i++) {
 		mod->keys[i] = BT_MESH_KEY_UNUSED;
+	}
+
+	mod->elem_idx = elem - dev_comp->elem;
+	if (vnd) {
+		mod->mod_idx = mod - elem->vnd_models;
+	} else {
+		mod->mod_idx = mod - elem->models;
 	}
 
 	if (vnd) {
@@ -267,16 +425,23 @@ static bool model_has_key(struct bt_mesh_model *mod, u16_t key)
 }
 
 static const struct bt_mesh_model_op *find_op(struct bt_mesh_model *models,
-					      u8_t model_count,
+					      u8_t model_count, u16_t dst,
 					      u16_t app_idx, u32_t opcode,
 					      struct bt_mesh_model **model)
 {
 	u8_t i;
 
-	for (i = 0; i < model_count; i++) {
+	for (i = 0U; i < model_count; i++) {
 		const struct bt_mesh_model_op *op;
 
 		*model = &models[i];
+
+		if (BT_MESH_ADDR_IS_GROUP(dst) ||
+		    BT_MESH_ADDR_IS_VIRTUAL(dst)) {
+			if (!bt_mesh_model_find_group(*model, dst)) {
+				continue;
+			}
+		}
 
 		if (!model_has_key(*model, app_idx)) {
 			continue;
@@ -354,7 +519,7 @@ void bt_mesh_model_recv(struct bt_mesh_net_rx *rx, struct net_buf_simple *buf)
 	int i;
 
 	BT_DBG("app_idx 0x%04x src 0x%04x dst 0x%04x", rx->ctx.app_idx,
-	       rx->ctx.addr, rx->dst);
+	       rx->ctx.addr, rx->ctx.recv_dst);
 	BT_DBG("len %u: %s", buf->len, bt_hex(buf->data, buf->len));
 
 	if (get_opcode(buf, &opcode) < 0) {
@@ -367,16 +532,15 @@ void bt_mesh_model_recv(struct bt_mesh_net_rx *rx, struct net_buf_simple *buf)
 	for (i = 0; i < dev_comp->elem_count; i++) {
 		struct bt_mesh_elem *elem = &dev_comp->elem[i];
 
-		if (BT_MESH_ADDR_IS_UNICAST(rx->dst)) {
-			if (elem->addr != rx->dst) {
+		if (BT_MESH_ADDR_IS_UNICAST(rx->ctx.recv_dst)) {
+			if (elem->addr != rx->ctx.recv_dst) {
 				continue;
 			}
-		} else if (BT_MESH_ADDR_IS_GROUP(rx->dst) ||
-			   BT_MESH_ADDR_IS_VIRTUAL(rx->dst)) {
-			if (!bt_mesh_elem_find_group(elem, rx->dst)) {
-				continue;
-			}
-		} else if (i != 0 || !bt_mesh_fixed_group_match(rx->dst)) {
+		} else if (BT_MESH_ADDR_IS_GROUP(rx->ctx.recv_dst) ||
+			   BT_MESH_ADDR_IS_VIRTUAL(rx->ctx.recv_dst)) {
+			/* find_op() will do proper model/group matching */
+		} else if (i != 0 ||
+			   !bt_mesh_fixed_group_match(rx->ctx.recv_dst)) {
 			continue;
 		}
 
@@ -392,7 +556,8 @@ void bt_mesh_model_recv(struct bt_mesh_net_rx *rx, struct net_buf_simple *buf)
 			count = elem->vnd_model_count;
 		}
 
-		op = find_op(models, count, rx->ctx.app_idx, opcode, &model);
+		op = find_op(models, count, rx->ctx.recv_dst, rx->ctx.app_idx,
+			     opcode, &model);
 		if (op) {
 			struct net_buf_simple_state state;
 
@@ -437,25 +602,19 @@ void bt_mesh_model_msg_init(struct net_buf_simple *msg, u32_t opcode)
 	net_buf_simple_add_le16(msg, opcode & 0xffff);
 }
 
-int bt_mesh_model_send(struct bt_mesh_model *model,
-		       struct bt_mesh_msg_ctx *ctx,
-		       struct net_buf_simple *msg, bt_mesh_cb_t cb,
-		       void *cb_data)
+static int model_send(struct bt_mesh_model *model,
+		      struct bt_mesh_net_tx *tx, bool implicit_bind,
+		      struct net_buf_simple *msg,
+		      const struct bt_mesh_send_cb *cb, void *cb_data)
 {
-	struct bt_mesh_net_tx tx = {
-		.sub = bt_mesh_subnet_get(ctx->net_idx),
-		.ctx = ctx,
-		.src = model->elem->addr,
-	};
-
-	if (ctx->friend_cred && !bt_mesh_lpn_established()) {
-		BT_ERR("Friendship Credentials requested without a Friend");
-		return -EINVAL;
-	}
-
-	BT_DBG("net_idx 0x%04x app_idx 0x%04x dst 0x%04x", ctx->net_idx,
-	       ctx->app_idx, ctx->addr);
+	BT_DBG("net_idx 0x%04x app_idx 0x%04x dst 0x%04x", tx->ctx->net_idx,
+	       tx->ctx->app_idx, tx->ctx->addr);
 	BT_DBG("len %u: %s", msg->len, bt_hex(msg->data, msg->len));
+
+	if (!bt_mesh_is_provisioned()) {
+		BT_ERR("Local node is not yet provisioned");
+		return -EAGAIN;
+	}
 
 	if (net_buf_simple_tailroom(msg) < 4) {
 		BT_ERR("Not enough tailroom for TransMIC");
@@ -467,41 +626,91 @@ int bt_mesh_model_send(struct bt_mesh_model *model,
 		return -EMSGSIZE;
 	}
 
-	if (!model_has_key(model, ctx->app_idx)) {
-		BT_ERR("Model not bound to AppKey 0x%04x", ctx->app_idx);
+	if (!implicit_bind && !model_has_key(model, tx->ctx->app_idx)) {
+		BT_ERR("Model not bound to AppKey 0x%04x", tx->ctx->app_idx);
 		return -EINVAL;
 	}
 
-	return bt_mesh_trans_send(&tx, msg, cb, cb_data);
+	return bt_mesh_trans_send(tx, msg, cb, cb_data);
 }
 
-int bt_mesh_model_publish(struct bt_mesh_model *model,
-			  struct net_buf_simple *msg)
+int bt_mesh_model_send(struct bt_mesh_model *model,
+		       struct bt_mesh_msg_ctx *ctx,
+		       struct net_buf_simple *msg,
+		       const struct bt_mesh_send_cb *cb, void *cb_data)
 {
-	struct bt_mesh_app_key *key;
-	struct bt_mesh_msg_ctx ctx;
+	struct bt_mesh_net_tx tx = {
+		.sub = bt_mesh_subnet_get(ctx->net_idx),
+		.ctx = ctx,
+		.src = bt_mesh_model_elem(model)->addr,
+		.xmit = bt_mesh_net_transmit_get(),
+		.friend_cred = 0,
+	};
 
-	if (!model->pub) {
+	return model_send(model, &tx, false, msg, cb, cb_data);
+}
+
+int bt_mesh_model_publish(struct bt_mesh_model *model)
+{
+	NET_BUF_SIMPLE_DEFINE(sdu, BT_MESH_TX_SDU_MAX);
+	struct bt_mesh_model_pub *pub = model->pub;
+	struct bt_mesh_app_key *key;
+	struct bt_mesh_msg_ctx ctx = {
+	};
+	struct bt_mesh_net_tx tx = {
+		.ctx = &ctx,
+		.src = bt_mesh_model_elem(model)->addr,
+		.xmit = bt_mesh_net_transmit_get(),
+	};
+	int err;
+
+	BT_DBG("");
+
+	if (!pub) {
 		return -ENOTSUP;
 	}
 
-	if (model->pub->key == BT_MESH_KEY_UNUSED ||
-	    model->pub->addr == BT_MESH_ADDR_UNASSIGNED) {
+	if (pub->addr == BT_MESH_ADDR_UNASSIGNED) {
 		return -EADDRNOTAVAIL;
 	}
 
-	key = bt_mesh_app_key_find(model->pub->key);
+	key = bt_mesh_app_key_find(pub->key);
 	if (!key) {
 		return -EADDRNOTAVAIL;
 	}
 
+	if (pub->msg->len + 4 > BT_MESH_TX_SDU_MAX) {
+		BT_ERR("Message does not fit maximum SDU size");
+		return -EMSGSIZE;
+	}
+
+	if (pub->count) {
+		BT_WARN("Clearing publish retransmit timer");
+		k_delayed_work_cancel(&pub->timer);
+	}
+
+	net_buf_simple_add_mem(&sdu, pub->msg->data, pub->msg->len);
+
+	ctx.addr = pub->addr;
+	ctx.send_ttl = pub->ttl;
 	ctx.net_idx = key->net_idx;
 	ctx.app_idx = key->app_idx;
-	ctx.addr = model->pub->addr;
-	ctx.friend_cred = model->pub->cred;
-	ctx.send_ttl = model->pub->ttl;
 
-	return bt_mesh_model_send(model, &ctx, msg, NULL, NULL);
+	tx.friend_cred = pub->cred;
+	tx.sub = bt_mesh_subnet_get(ctx.net_idx),
+
+	pub->count = BT_MESH_PUB_TRANSMIT_COUNT(pub->retransmit);
+
+	BT_DBG("Publish Retransmit Count %u Interval %ums", pub->count,
+	       BT_MESH_PUB_TRANSMIT_INT(pub->retransmit));
+
+	err = model_send(model, &tx, true, &sdu, &pub_sent_cb, model);
+	if (err) {
+		pub->count = 0;
+		return err;
+	}
+
+	return 0;
 }
 
 struct bt_mesh_model *bt_mesh_model_find_vnd(struct bt_mesh_elem *elem,
@@ -509,7 +718,7 @@ struct bt_mesh_model *bt_mesh_model_find_vnd(struct bt_mesh_elem *elem,
 {
 	u8_t i;
 
-	for (i = 0; i < elem->vnd_model_count; i++) {
+	for (i = 0U; i < elem->vnd_model_count; i++) {
 		if (elem->vnd_models[i].vnd.company == company &&
 		    elem->vnd_models[i].vnd.id == id) {
 			return &elem->vnd_models[i];
@@ -524,7 +733,7 @@ struct bt_mesh_model *bt_mesh_model_find(struct bt_mesh_elem *elem,
 {
 	u8_t i;
 
-	for (i = 0; i < elem->model_count; i++) {
+	for (i = 0U; i < elem->model_count; i++) {
 		if (elem->models[i].id == id) {
 			return &elem->models[i];
 		}

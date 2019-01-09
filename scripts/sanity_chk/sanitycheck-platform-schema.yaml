@@ -17,7 +17,10 @@ mapping:
     type: str
   "type":
     type: str
-    enum: [ 'mcu', 'qemu', 'sim', 'unit' ]
+    enum: [ 'mcu', 'qemu', 'sim', 'unit', 'native']
+  "simulation":
+    type: str
+    enum: [ 'qemu', 'simics', 'xt-sim', 'renode', 'nsim']
   "arch":
     type: str
   "toolchain":
@@ -25,11 +28,17 @@ mapping:
     seq:
       -
         type: str
-        enum: [ 'gccarmemb', 'issm', 'xcc', 'zephyr', 'espressif']
+  "env":
+    type: seq
+    seq:
+      -
+        type: str
   "ram":
     type: int
   "flash":
     type: int
+  "sanitycheck":
+    type: bool
   "supported":
     type: seq
     seq:

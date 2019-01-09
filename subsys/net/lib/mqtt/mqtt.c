@@ -4,7 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <net/mqtt.h>
+#include <logging/log.h>
+LOG_MODULE_REGISTER(net_mqtt, LOG_LEVEL_ERR);
+
+#include <net/mqtt_legacy.h>
 #include "mqtt_pkt.h"
 
 #include <net/net_ip.h>
@@ -13,8 +16,8 @@
 #include <net/buf.h>
 #include <errno.h>
 
-#define MSG_SIZE	CONFIG_MQTT_MSG_MAX_SIZE
-#define MQTT_BUF_CTR	(1 + CONFIG_MQTT_ADDITIONAL_BUFFER_CTR)
+#define MSG_SIZE        CONFIG_MQTT_LEGACY_MSG_MAX_SIZE
+#define MQTT_BUF_CTR    (1 + CONFIG_MQTT_LEGACY_ADDITIONAL_BUFFER_CTR)
 
 /* Memory pool internally used to handle messages that may exceed the size of
  * system defined network buffer. By using this memory pool, routines don't deal
@@ -22,9 +25,9 @@
  */
 NET_BUF_POOL_DEFINE(mqtt_msg_pool, MQTT_BUF_CTR, MSG_SIZE, 0, NULL);
 
-#define MQTT_PUBLISHER_MIN_MSG_SIZE	2
+#define MQTT_PUBLISHER_MIN_MSG_SIZE     2
 
-#if defined(CONFIG_MQTT_LIB_TLS)
+#if defined(CONFIG_MQTT_LEGACY_LIB_TLS)
 #define TLS_HS_DEFAULT_TIMEOUT 3000
 #endif
 
@@ -48,7 +51,7 @@ int mqtt_tx_connect(struct mqtt_ctx *ctx, struct mqtt_connect_msg *msg)
 	}
 
 	tx = net_app_get_net_pkt(&ctx->net_app_ctx,
-				AF_UNSPEC, ctx->net_timeout);
+				 AF_UNSPEC, ctx->net_timeout);
 	if (tx == NULL) {
 		rc = -ENOMEM;
 		goto exit_connect;
@@ -58,7 +61,7 @@ int mqtt_tx_connect(struct mqtt_ctx *ctx, struct mqtt_connect_msg *msg)
 	data = NULL;
 
 	rc = net_app_send_pkt(&ctx->net_app_ctx,
-			tx, NULL, 0, ctx->net_timeout, NULL);
+			      tx, NULL, 0, ctx->net_timeout, NULL);
 	if (rc < 0) {
 		net_pkt_unref(tx);
 	}
@@ -87,7 +90,7 @@ int mqtt_tx_disconnect(struct mqtt_ctx *ctx)
 	}
 
 	tx = net_app_get_net_pkt(&ctx->net_app_ctx,
-				AF_UNSPEC, ctx->net_timeout);
+				 AF_UNSPEC, ctx->net_timeout);
 	if (tx == NULL) {
 		return -ENOMEM;
 	}
@@ -99,7 +102,7 @@ int mqtt_tx_disconnect(struct mqtt_ctx *ctx)
 	}
 
 	rc = net_app_send_pkt(&ctx->net_app_ctx,
-			tx, NULL, 0, ctx->net_timeout, NULL);
+			      tx, NULL, 0, ctx->net_timeout, NULL);
 	if (rc < 0) {
 		goto exit_disconnect;
 	}
@@ -162,7 +165,7 @@ int mqtt_tx_pub_msgs(struct mqtt_ctx *ctx, u16_t id,
 	}
 
 	tx = net_app_get_net_pkt(&ctx->net_app_ctx,
-				AF_UNSPEC, ctx->net_timeout);
+				 AF_UNSPEC, ctx->net_timeout);
 	if (tx == NULL) {
 		return -ENOMEM;
 	}
@@ -174,7 +177,7 @@ int mqtt_tx_pub_msgs(struct mqtt_ctx *ctx, u16_t id,
 	}
 
 	rc = net_app_send_pkt(&ctx->net_app_ctx,
-			tx, NULL, 0, ctx->net_timeout, NULL);
+			      tx, NULL, 0, ctx->net_timeout, NULL);
 	if (rc < 0) {
 		goto exit_send;
 	}
@@ -227,7 +230,7 @@ int mqtt_tx_publish(struct mqtt_ctx *ctx, struct mqtt_publish_msg *msg)
 	}
 
 	tx = net_app_get_net_pkt(&ctx->net_app_ctx,
-				AF_UNSPEC, ctx->net_timeout);
+				 AF_UNSPEC, ctx->net_timeout);
 	if (tx == NULL) {
 		rc = -ENOMEM;
 		goto exit_publish;
@@ -237,7 +240,7 @@ int mqtt_tx_publish(struct mqtt_ctx *ctx, struct mqtt_publish_msg *msg)
 	data = NULL;
 
 	rc = net_app_send_pkt(&ctx->net_app_ctx,
-			tx, NULL, 0, ctx->net_timeout, NULL);
+			      tx, NULL, 0, ctx->net_timeout, NULL);
 	if (rc < 0) {
 		net_pkt_unref(tx);
 	}
@@ -265,7 +268,7 @@ int mqtt_tx_pingreq(struct mqtt_ctx *ctx)
 	}
 
 	tx = net_app_get_net_pkt(&ctx->net_app_ctx,
-				AF_UNSPEC, ctx->net_timeout);
+				 AF_UNSPEC, ctx->net_timeout);
 	if (tx == NULL) {
 		return -ENOMEM;
 	}
@@ -277,7 +280,7 @@ int mqtt_tx_pingreq(struct mqtt_ctx *ctx)
 	}
 
 	rc = net_app_send_pkt(&ctx->net_app_ctx,
-			tx, NULL, 0, ctx->net_timeout, NULL);
+			      tx, NULL, 0, ctx->net_timeout, NULL);
 	if (rc < 0) {
 		goto exit_pingreq;
 	}
@@ -312,7 +315,7 @@ int mqtt_tx_subscribe(struct mqtt_ctx *ctx, u16_t pkt_id, u8_t items,
 	}
 
 	tx = net_app_get_net_pkt(&ctx->net_app_ctx,
-				AF_UNSPEC, ctx->net_timeout);
+				 AF_UNSPEC, ctx->net_timeout);
 	if (tx == NULL) {
 		rc = -ENOMEM;
 		goto exit_subs;
@@ -322,7 +325,7 @@ int mqtt_tx_subscribe(struct mqtt_ctx *ctx, u16_t pkt_id, u8_t items,
 	data = NULL;
 
 	rc = net_app_send_pkt(&ctx->net_app_ctx,
-			tx, NULL, 0, ctx->net_timeout, NULL);
+			      tx, NULL, 0, ctx->net_timeout, NULL);
 	if (rc < 0) {
 		net_pkt_unref(tx);
 	}
@@ -357,7 +360,7 @@ int mqtt_tx_unsubscribe(struct mqtt_ctx *ctx, u16_t pkt_id, u8_t items,
 	}
 
 	tx = net_app_get_net_pkt(&ctx->net_app_ctx,
-				AF_UNSPEC, ctx->net_timeout);
+				 AF_UNSPEC, ctx->net_timeout);
 	if (tx == NULL) {
 		rc = -ENOMEM;
 		goto exit_unsub;
@@ -367,7 +370,7 @@ int mqtt_tx_unsubscribe(struct mqtt_ctx *ctx, u16_t pkt_id, u8_t items,
 	data = NULL;
 
 	rc = net_app_send_pkt(&ctx->net_app_ctx,
-			tx, NULL, 0, ctx->net_timeout, NULL);
+			      tx, NULL, 0, ctx->net_timeout, NULL);
 	if (rc < 0) {
 		net_pkt_unref(tx);
 	}
@@ -415,8 +418,8 @@ int mqtt_rx_connack(struct mqtt_ctx *ctx, struct net_buf *rx, int clean_session)
 		break;
 	/* previous session */
 	case 0:
-		/* TODO */
-		/* FALLTHROUGH */
+	/* TODO */
+	/* FALLTHROUGH */
 	default:
 		rc = -EINVAL;
 		goto exit_connect;
@@ -503,7 +506,7 @@ int mqtt_rx_pub_msgs(struct mqtt_ctx *ctx, struct net_buf *rx,
 		return -EINVAL;
 	}
 
-	if (!response)  {
+	if (!response) {
 		return 0;
 	}
 
@@ -553,7 +556,7 @@ int mqtt_rx_pingresp(struct mqtt_ctx *ctx, struct net_buf *rx)
 
 int mqtt_rx_suback(struct mqtt_ctx *ctx, struct net_buf *rx)
 {
-	enum mqtt_qos suback_qos[CONFIG_MQTT_SUBSCRIBE_MAX_TOPICS];
+	enum mqtt_qos suback_qos[CONFIG_MQTT_LEGACY_SUBSCRIBE_MAX_TOPICS];
 	u16_t pkt_id;
 	u16_t len;
 	u8_t items;
@@ -564,7 +567,8 @@ int mqtt_rx_suback(struct mqtt_ctx *ctx, struct net_buf *rx)
 	len = rx->len;
 
 	rc = mqtt_unpack_suback(data, len, &pkt_id, &items,
-				CONFIG_MQTT_SUBSCRIBE_MAX_TOPICS, suback_qos);
+				CONFIG_MQTT_LEGACY_SUBSCRIBE_MAX_TOPICS,
+				suback_qos);
 	if (rc != 0) {
 		return -EINVAL;
 	}
@@ -660,12 +664,12 @@ struct net_buf *mqtt_linearize_packet(struct mqtt_ctx *ctx, struct net_pkt *rx,
 	u16_t offset;
 	int rc;
 
-	/* CONFIG_MQTT_MSG_MAX_SIZE is defined via Kconfig. So here it's
+	/* CONFIG_MQTT_LEGACY_MSG_MAX_SIZE is defined via Kconfig. So here it's
 	 * determined if the input packet could fit our data buffer or if
 	 * it has the expected size.
 	 */
 	data_len = net_pkt_appdatalen(rx);
-	if (data_len < min_size || data_len > CONFIG_MQTT_MSG_MAX_SIZE) {
+	if (data_len < min_size || data_len > CONFIG_MQTT_LEGACY_MSG_MAX_SIZE) {
 		return NULL;
 	}
 
@@ -747,6 +751,9 @@ int mqtt_parser(struct mqtt_ctx *ctx, struct net_pkt *rx)
 	case MQTT_SUBACK:
 		rc = mqtt_rx_suback(ctx, data);
 		break;
+	case MQTT_UNSUBACK:
+		rc = mqtt_rx_unsuback(ctx, data);
+		break;
 	default:
 		rc = -EINVAL;
 		break;
@@ -773,14 +780,14 @@ void app_connected(struct net_app_ctx *ctx, int status, void *data)
 		return;
 	}
 
-#if defined(CONFIG_MQTT_LIB_TLS)
+#if defined(CONFIG_MQTT_LEGACY_LIB_TLS)
 	k_sem_give(&mqtt->tls_hs_wait);
 #endif
 }
 
 static
 void app_recv(struct net_app_ctx *ctx, struct net_pkt *pkt, int status,
-	       void *data)
+	      void *data)
 {
 	struct mqtt_ctx *mqtt = (struct mqtt_ctx *)data;
 
@@ -810,37 +817,37 @@ int mqtt_connect(struct mqtt_ctx *ctx)
 	}
 
 	rc = net_app_init_tcp_client(&ctx->net_app_ctx,
-			NULL,
-			NULL,
-			ctx->peer_addr_str,
-			ctx->peer_port,
-			ctx->net_init_timeout,
-			ctx);
+				     NULL,
+				     NULL,
+				     ctx->peer_addr_str,
+				     ctx->peer_port,
+				     ctx->net_init_timeout,
+				     ctx);
 	if (rc < 0) {
 		goto error_connect;
 	}
 
 	rc = net_app_set_cb(&ctx->net_app_ctx,
-			app_connected,
-			app_recv,
-			NULL,
-			NULL);
+			    app_connected,
+			    app_recv,
+			    NULL,
+			    NULL);
 	if (rc < 0) {
 		goto error_connect;
 	}
 
-#if defined(CONFIG_MQTT_LIB_TLS)
+#if defined(CONFIG_MQTT_LEGACY_LIB_TLS)
 	rc = net_app_client_tls(&ctx->net_app_ctx,
-			ctx->request_buf,
-			ctx->request_buf_len,
-			ctx->personalization_data,
-			ctx->personalization_data_len,
-			ctx->cert_cb,
-			ctx->cert_host,
-			ctx->entropy_src_cb,
-			ctx->tls_mem_pool,
-			ctx->tls_stack,
-			ctx->tls_stack_size);
+				ctx->request_buf,
+				ctx->request_buf_len,
+				ctx->personalization_data,
+				ctx->personalization_data_len,
+				ctx->cert_cb,
+				ctx->cert_host,
+				ctx->entropy_src_cb,
+				ctx->tls_mem_pool,
+				ctx->tls_stack,
+				ctx->tls_stack_size);
 	if (rc < 0) {
 		goto error_connect;
 	}
@@ -851,7 +858,7 @@ int mqtt_connect(struct mqtt_ctx *ctx)
 		goto error_connect;
 	}
 
-#if defined(CONFIG_MQTT_LIB_TLS)
+#if defined(CONFIG_MQTT_LEGACY_LIB_TLS)
 	/* TLS handshake is not finished until app_connected is called */
 	rc = k_sem_take(&ctx->tls_hs_wait, ctx->tls_hs_timeout);
 	if (rc < 0) {
@@ -878,7 +885,7 @@ int mqtt_init(struct mqtt_ctx *ctx, enum mqtt_app app_type)
 	ctx->app_type = app_type;
 	ctx->rcv = mqtt_parser;
 
-#if defined(CONFIG_MQTT_LIB_TLS)
+#if defined(CONFIG_MQTT_LEGACY_LIB_TLS)
 	if (ctx->tls_hs_timeout == 0) {
 		ctx->tls_hs_timeout = TLS_HS_DEFAULT_TIMEOUT;
 	}

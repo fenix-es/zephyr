@@ -1,7 +1,7 @@
 .. _zephyr-security-docs:
 
-Zephyr Project Security
-#######################
+Security
+########
 
 These documents describe the requirements, processes, and developer guidelines
 for ensuring security is addressed within the Zephyr project.
@@ -12,3 +12,4 @@ for ensuring security is addressed within the Zephyr project.
 
    security-overview.rst
    secure-coding.rst
+   sensor-threat.rst

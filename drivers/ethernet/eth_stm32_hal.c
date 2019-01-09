@@ -3,9 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define SYS_LOG_DOMAIN "dev/eth_stm32_hal"
-#define SYS_LOG_LEVEL CONFIG_SYS_LOG_ETHERNET_LEVEL
-#include <logging/sys_log.h>
+#define LOG_MODULE_NAME eth_stm32_hal
+#define LOG_LEVEL CONFIG_ETHERNET_LOG_LEVEL
+
+#include <logging/log.h>
+LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
 #include <kernel.h>
 #include <device.h>
@@ -15,6 +17,8 @@
 #include <stdbool.h>
 #include <net/net_pkt.h>
 #include <net/net_if.h>
+#include <net/ethernet.h>
+#include <ethernet/eth_stats.h>
 #include <soc.h>
 #include <misc/printk.h>
 #include <clock_control.h>
@@ -51,10 +55,9 @@ static inline void disable_mcast_filter(ETH_HandleTypeDef *heth)
 	heth->Instance->MACFFR = tmp;
 }
 
-static int eth_tx(struct net_if *iface, struct net_pkt *pkt)
+static int eth_tx(struct device *dev, struct net_pkt *pkt)
 {
-	struct device *dev;
-	struct eth_stm32_hal_dev_data *dev_data;
+	struct eth_stm32_hal_dev_data *dev_data = DEV_DATA(dev);
 	ETH_HandleTypeDef *heth;
 	u8_t *dma_buffer;
 	int res;
@@ -62,13 +65,8 @@ static int eth_tx(struct net_if *iface, struct net_pkt *pkt)
 	u16_t total_len;
 	__IO ETH_DMADescTypeDef *dma_tx_desc;
 
-	__ASSERT_NO_MSG(iface != NULL);
 	__ASSERT_NO_MSG(pkt != NULL);
 	__ASSERT_NO_MSG(pkt->frags != NULL);
-
-	dev = net_if_get_device(iface);
-	dev_data = DEV_DATA(dev);
-
 	__ASSERT_NO_MSG(dev != NULL);
 	__ASSERT_NO_MSG(dev_data != NULL);
 
@@ -76,9 +74,9 @@ static int eth_tx(struct net_if *iface, struct net_pkt *pkt)
 
 	k_mutex_lock(&dev_data->tx_mutex, K_FOREVER);
 
-	total_len = net_pkt_ll_reserve(pkt) + net_pkt_get_len(pkt);
+	total_len = net_pkt_get_len(pkt);
 	if (total_len > ETH_TX_BUF_SIZE) {
-		SYS_LOG_ERR("PKT to big\n");
+		LOG_ERR("PKT to big");
 		res = -EIO;
 		goto error;
 	}
@@ -90,11 +88,7 @@ static int eth_tx(struct net_if *iface, struct net_pkt *pkt)
 
 	dma_buffer = (u8_t *)(dma_tx_desc->Buffer1Addr);
 
-	memcpy(dma_buffer, net_pkt_ll(pkt),
-		net_pkt_ll_reserve(pkt) + pkt->frags->len);
-	dma_buffer += net_pkt_ll_reserve(pkt) + pkt->frags->len;
-
-	frag = pkt->frags->frags;
+	frag = pkt->frags;
 	while (frag) {
 		memcpy(dma_buffer, frag->data, frag->len);
 		dma_buffer += frag->len;
@@ -102,7 +96,7 @@ static int eth_tx(struct net_if *iface, struct net_pkt *pkt)
 	}
 
 	if (HAL_ETH_TransmitFrame(heth, total_len) != HAL_OK) {
-		SYS_LOG_ERR("HAL_ETH_TransmitFrame failed\n");
+		LOG_ERR("HAL_ETH_TransmitFrame failed");
 		res = -EIO;
 		goto error;
 	}
@@ -118,8 +112,6 @@ static int eth_tx(struct net_if *iface, struct net_pkt *pkt)
 		res = -EIO;
 		goto error;
 	}
-
-	net_pkt_unref(pkt);
 
 	res = 0;
 error:
@@ -154,14 +146,14 @@ static struct net_pkt *eth_rx(struct device *dev)
 	total_len = heth->RxFrameInfos.length;
 	dma_buffer = (u8_t *)heth->RxFrameInfos.buffer;
 
-	pkt = net_pkt_get_reserve_rx(0, K_NO_WAIT);
+	pkt = net_pkt_get_reserve_rx(K_NO_WAIT);
 	if (!pkt) {
-		SYS_LOG_ERR("Failed to obtain RX buffer");
+		LOG_ERR("Failed to obtain RX buffer");
 		goto release_desc;
 	}
 
 	if (!net_pkt_append_all(pkt, total_len, dma_buffer, K_NO_WAIT)) {
-		SYS_LOG_ERR("Failed to append RX buffer to context buffer");
+		LOG_ERR("Failed to append RX buffer to context buffer");
 		net_pkt_unref(pkt);
 		pkt = NULL;
 		goto release_desc;
@@ -191,6 +183,10 @@ release_desc:
 		heth->Instance->DMARPDR = 0;
 	}
 
+	if (!pkt) {
+		eth_stats_update_errors_rx(dev_data->iface);
+	}
+
 	return pkt;
 }
 
@@ -217,7 +213,8 @@ static void rx_thread(void *arg1, void *unused1, void *unused2)
 			net_pkt_print_frags(pkt);
 			res = net_recv_data(dev_data->iface, pkt);
 			if (res < 0) {
-				SYS_LOG_ERR("Failed to enqueue frame "
+				eth_stats_update_errors_rx(dev_data->iface);
+				LOG_ERR("Failed to enqueue frame "
 					"into RX queue: %d", res);
 				net_pkt_unref(pkt);
 			}
@@ -262,6 +259,7 @@ static int eth_initialize(struct device *dev)
 {
 	struct eth_stm32_hal_dev_data *dev_data;
 	struct eth_stm32_hal_dev_cfg *cfg;
+	int ret = 0;
 
 	__ASSERT_NO_MSG(dev != NULL);
 
@@ -275,14 +273,19 @@ static int eth_initialize(struct device *dev)
 	__ASSERT_NO_MSG(dev_data->clock != NULL);
 
 	/* enable clock */
-	clock_control_on(dev_data->clock,
+	ret = clock_control_on(dev_data->clock,
 		(clock_control_subsys_t *)&cfg->pclken);
-	clock_control_on(dev_data->clock,
+	ret |= clock_control_on(dev_data->clock,
 		(clock_control_subsys_t *)&cfg->pclken_tx);
-	clock_control_on(dev_data->clock,
+	ret |= clock_control_on(dev_data->clock,
 		(clock_control_subsys_t *)&cfg->pclken_rx);
-	clock_control_on(dev_data->clock,
+	ret |= clock_control_on(dev_data->clock,
 		(clock_control_subsys_t *)&cfg->pclken_ptp);
+
+	if (ret) {
+		LOG_ERR("Failed to enable ethernet clock");
+		return -EIO;
+	}
 
 	__ASSERT_NO_MSG(cfg->config_func != NULL);
 
@@ -305,11 +308,12 @@ static void generate_mac(u8_t *mac_addr)
 }
 #endif
 
-static void eth0_iface_init(struct net_if *iface)
+static void eth_iface_init(struct net_if *iface)
 {
 	struct device *dev;
 	struct eth_stm32_hal_dev_data *dev_data;
 	ETH_HandleTypeDef *heth;
+	u8_t hal_ret;
 
 	__ASSERT_NO_MSG(iface != NULL);
 
@@ -323,6 +327,24 @@ static void eth0_iface_init(struct net_if *iface)
 
 	dev_data->iface = iface;
 
+#if defined(CONFIG_ETH_STM32_HAL_RANDOM_MAC)
+	generate_mac(dev_data->mac_addr);
+#endif
+
+	heth->Init.MACAddr = dev_data->mac_addr;
+
+	hal_ret = HAL_ETH_Init(heth);
+
+	if (hal_ret == HAL_TIMEOUT) {
+		/* HAL Init time out. This could be linked to */
+		/* a recoverable error. Log the issue and continue */
+		/* driver initialisation */
+		LOG_ERR("HAL_ETH_Init Timed out");
+	} else if (hal_ret != HAL_OK) {
+		LOG_ERR("HAL_ETH_Init failed: %d", hal_ret);
+		return;
+	}
+
 	/* Initialize semaphores */
 	k_mutex_init(&dev_data->tx_mutex);
 	k_sem_init(&dev_data->rx_int_sem, 0, UINT_MAX);
@@ -334,16 +356,6 @@ static void eth0_iface_init(struct net_if *iface)
 			K_PRIO_COOP(CONFIG_ETH_STM32_HAL_RX_THREAD_PRIO),
 			0, K_NO_WAIT);
 
-#if defined(CONFIG_ETH_STM32_HAL_RANDOM_MAC)
-	generate_mac(dev_data->mac_addr);
-#endif
-
-	heth->Init.MACAddr = dev_data->mac_addr;
-
-	if (HAL_ETH_Init(heth) != HAL_OK) {
-		SYS_LOG_ERR("HAL_ETH_Init failed\n");
-	}
-
 	HAL_ETH_DMATxDescListInit(heth, dma_tx_desc_tab,
 		&dma_tx_buffer[0][0], ETH_TXBUFNB);
 	HAL_ETH_DMARxDescListInit(heth, dma_rx_desc_tab,
@@ -353,15 +365,31 @@ static void eth0_iface_init(struct net_if *iface)
 
 	disable_mcast_filter(heth);
 
+	LOG_DBG("MAC %02x:%02x:%02x:%02x:%02x:%02x",
+		dev_data->mac_addr[0], dev_data->mac_addr[1],
+		dev_data->mac_addr[2], dev_data->mac_addr[3],
+		dev_data->mac_addr[4], dev_data->mac_addr[5]);
+
 	/* Register Ethernet MAC Address with the upper layer */
 	net_if_set_link_addr(iface, dev_data->mac_addr,
 			     sizeof(dev_data->mac_addr),
 			     NET_LINK_ETHERNET);
+
+	ethernet_init(iface);
 }
 
-static struct net_if_api eth0_api = {
-	.init	= eth0_iface_init,
-	.send	= eth_tx,
+static enum ethernet_hw_caps eth_stm32_hal_get_capabilities(struct device *dev)
+{
+	ARG_UNUSED(dev);
+
+	return ETHERNET_LINK_10BASE_T | ETHERNET_LINK_100BASE_T;
+}
+
+static const struct ethernet_api eth_api = {
+	.iface_api.init = eth_iface_init,
+
+	.get_capabilities = eth_stm32_hal_get_capabilities,
+	.send = eth_tx,
 };
 
 static struct device DEVICE_NAME_GET(eth0_stm32_hal);
@@ -393,7 +421,11 @@ static struct eth_stm32_hal_dev_data eth0_data = {
 			.PhyAddress = CONFIG_ETH_STM32_HAL_PHY_ADDRESS,
 			.RxMode = ETH_RXINTERRUPT_MODE,
 			.ChecksumMode = ETH_CHECKSUM_BY_SOFTWARE,
+#if defined(CONFIG_ETH_STM32_HAL_MII)
+			.MediaInterface = ETH_MEDIA_INTERFACE_MII,
+#else
 			.MediaInterface = ETH_MEDIA_INTERFACE_RMII,
+#endif
 		},
 	},
 	.mac_addr = {
@@ -410,6 +442,5 @@ static struct eth_stm32_hal_dev_data eth0_data = {
 };
 
 NET_DEVICE_INIT(eth0_stm32_hal, CONFIG_ETH_STM32_HAL_NAME, eth_initialize,
-	&eth0_data, &eth0_config, CONFIG_ETH_INIT_PRIORITY, &eth0_api,
+	&eth0_data, &eth0_config, CONFIG_ETH_INIT_PRIORITY, &eth_api,
 	ETHERNET_L2, NET_L2_GET_CTX_TYPE(ETHERNET_L2), ETH_STM32_HAL_MTU);
-

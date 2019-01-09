@@ -7,8 +7,8 @@
 /** @file sys_log.h
  *  @brief Logging macros.
  */
-#ifndef __SYS_LOG_H
-#define __SYS_LOG_H
+#ifndef ZEPHYR_INCLUDE_LOGGING_SYS_LOG_H_
+#define ZEPHYR_INCLUDE_LOGGING_SYS_LOG_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,11 +33,10 @@ extern "C" {
 /**
  * @brief System Log
  * @defgroup system_log System Log
+ * @ingroup logging
  * @{
  */
 #if defined(CONFIG_SYS_LOG) && (SYS_LOG_LEVEL > SYS_LOG_LEVEL_OFF)
-
-#define IS_SYS_LOG_ACTIVE 1
 
 extern void (*syslog_hook)(const char *fmt, ...);
 void syslog_hook_install(void (*hook)(const char *, ...));
@@ -106,32 +105,25 @@ void syslog_hook_install(void (*hook)(const char *, ...));
 	LOG_BACKEND_CALL(log_lv, log_color, log_format,			\
 	SYS_LOG_COLOR_OFF, ##__VA_ARGS__)
 
-#define SYS_LOG_ERR(...) LOG_COLOR(SYS_LOG_TAG_ERR, SYS_LOG_COLOR_RED,	\
-	##__VA_ARGS__)
+#define SYS_LOG_ERR(...) __DEPRECATED_MACRO				\
+	LOG_COLOR(SYS_LOG_TAG_ERR, SYS_LOG_COLOR_RED, ##__VA_ARGS__)
 
 #if (SYS_LOG_LEVEL >= SYS_LOG_LEVEL_WARNING)
-#define SYS_LOG_WRN(...) LOG_COLOR(SYS_LOG_TAG_WRN,			\
+#define SYS_LOG_WRN(...) __DEPRECATED_MACRO LOG_COLOR(SYS_LOG_TAG_WRN,  \
 	SYS_LOG_COLOR_YELLOW, ##__VA_ARGS__)
 #endif
 
 #if (SYS_LOG_LEVEL >= SYS_LOG_LEVEL_INFO)
-#define SYS_LOG_INF(...) LOG_NO_COLOR(SYS_LOG_TAG_INF, ##__VA_ARGS__)
+#define SYS_LOG_INF(...) __DEPRECATED_MACRO				\
+	LOG_NO_COLOR(SYS_LOG_TAG_INF, ##__VA_ARGS__)
 #endif
 
 #if (SYS_LOG_LEVEL == SYS_LOG_LEVEL_DEBUG)
-#define SYS_LOG_DBG(...) LOG_NO_COLOR(SYS_LOG_TAG_DBG, ##__VA_ARGS__)
+#define SYS_LOG_DBG(...) __DEPRECATED_MACRO				\
+	LOG_NO_COLOR(SYS_LOG_TAG_DBG, ##__VA_ARGS__)
 #endif
 
 #else
-/**
- * @def IS_SYS_LOG_ACTIVE
- *
- * @brief Specifies whether SYS_LOG is in use or not.
- *
- * @details This macro expands to 1 if SYS_LOG was activated for current .c
- * file, 0 otherwise.
- */
-#define IS_SYS_LOG_ACTIVE 0
 /**
  * @def SYS_LOG_ERR
  *
@@ -143,6 +135,7 @@ void syslog_hook_install(void (*hook)(const char *, ...));
  *
  * @param ... A string optionally containing printk valid conversion specifier,
  * followed by as many values as specifiers.
+ * @deprecated Use LOG_ERR
  */
 #define SYS_LOG_ERR(...) { ; }
 #endif /* CONFIG_SYS_LOG */
@@ -160,6 +153,7 @@ void syslog_hook_install(void (*hook)(const char *, ...));
  *
  * @param ... A string optionally containing printk valid conversion specifier,
  * followed by as many values as specifiers.
+ * @deprecated Use LOG_WRN
  */
 #define SYS_LOG_WRN(...) { ; }
 #endif
@@ -175,6 +169,8 @@ void syslog_hook_install(void (*hook)(const char *, ...));
  *
  * @param ... A string optionally containing printk valid conversion specifier,
  * followed by as many values as specifiers.
+ *
+ * @deprecated Use LOG_INF
  */
 #define SYS_LOG_INF(...) { ; }
 #endif
@@ -190,6 +186,8 @@ void syslog_hook_install(void (*hook)(const char *, ...));
  *
  * @param ... A string optionally containing printk valid conversion specifier,
  * followed by as many values as specifiers.
+ *
+ * @deprecated Use LOG_DBG
  */
 #define SYS_LOG_DBG(...) { ; }
 #endif
@@ -201,4 +199,4 @@ void syslog_hook_install(void (*hook)(const char *, ...));
 }
 #endif
 
-#endif /* __SYS_LOG_H */
+#endif /* ZEPHYR_INCLUDE_LOGGING_SYS_LOG_H_ */

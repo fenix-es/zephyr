@@ -9,8 +9,12 @@
 #include <kernel.h>
 #include <sensor.h>
 #include <misc/__assert.h>
+#include <logging/log.h>
 
 #include "sht3xd.h"
+
+#define LOG_LEVEL CONFIG_SENSOR_LOG_LEVEL
+LOG_MODULE_REGISTER(SHT3XD);
 
 /*
  * CRC algorithm parameters were taken from the
@@ -87,19 +91,19 @@ static int sht3xd_sample_fetch(struct device *dev, enum sensor_channel chan)
 	};
 
 	if (i2c_transfer(drv_data->i2c, msgs, 2, SHT3XD_I2C_ADDRESS) < 0) {
-		SYS_LOG_DBG("Failed to read data sample!");
+		LOG_DBG("Failed to read data sample!");
 		return -EIO;
 	}
 
 	t_sample = (rx_buf[0] << 8) | rx_buf[1];
 	if (sht3xd_compute_crc(t_sample) != rx_buf[2]) {
-		SYS_LOG_DBG("Received invalid temperature CRC!");
+		LOG_DBG("Received invalid temperature CRC!");
 		return -EIO;
 	}
 
 	rh_sample = (rx_buf[3] << 8) | rx_buf[4];
 	if (sht3xd_compute_crc(rh_sample) != rx_buf[5]) {
-		SYS_LOG_DBG("Received invalid relative humidity CRC!");
+		LOG_DBG("Received invalid relative humidity CRC!");
 		return -EIO;
 	}
 
@@ -120,16 +124,17 @@ static int sht3xd_channel_get(struct device *dev,
 	 * See datasheet "Conversion of Signal Output" section
 	 * for more details on processing sample data.
 	 */
-	if (chan == SENSOR_CHAN_TEMP) {
+	if (chan == SENSOR_CHAN_AMBIENT_TEMP) {
 		/* val = -45 + 175 * sample / (2^16 -1) */
 		tmp = 175 * (u64_t)drv_data->t_sample;
 		val->val1 = (s32_t)(tmp / 0xFFFF) - 45;
 		val->val2 = (1000000 * (tmp % 0xFFFF)) / 0xFFFF;
 	} else if (chan == SENSOR_CHAN_HUMIDITY) {
-		/* val = 100000 * sample / (2^16 -1) */
-		tmp = 100000 * (u64_t)drv_data->rh_sample;
-		val->val1 = tmp / 0xFFFF;
-		val->val2 = (1000000 * (tmp % 0xFFFF)) / 0xFFFF;
+		/* val = 100 * sample / (2^16 -1) */
+		u32_t tmp2 = 100 * (u32_t)drv_data->rh_sample;
+		val->val1 = tmp2 / 0xFFFF;
+		/* x * 100000 / 65536 == x * 15625 / 1024 */
+		val->val2 = (tmp2 % 0xFFFF) * 15625 / 1024;
 	} else {
 		return -ENOTSUP;
 	}
@@ -150,16 +155,20 @@ static int sht3xd_init(struct device *dev)
 {
 	struct sht3xd_data *drv_data = dev->driver_data;
 
-	drv_data->i2c = device_get_binding(CONFIG_SHT3XD_I2C_MASTER_DEV_NAME);
+	drv_data->i2c = device_get_binding(DT_SHT3XD_I2C_MASTER_DEV_NAME);
 	if (drv_data->i2c == NULL) {
-		SYS_LOG_DBG("Failed to get pointer to %s device!",
-		    CONFIG_SHT3XD_I2C_MASTER_DEV_NAME);
+		LOG_DBG("Failed to get pointer to %s device!",
+			DT_SHT3XD_I2C_MASTER_DEV_NAME);
+		return -EINVAL;
+	}
+	if (!SHT3XD_I2C_ADDRESS) {
+		LOG_DBG("No I2C address");
 		return -EINVAL;
 	}
 
 	/* clear status register */
 	if (sht3xd_write_command(drv_data, SHT3XD_CMD_CLEAR_STATUS) < 0) {
-		SYS_LOG_DBG("Failed to clear status register!");
+		LOG_DBG("Failed to clear status register!");
 		return -EIO;
 	}
 
@@ -169,7 +178,7 @@ static int sht3xd_init(struct device *dev)
 	if (sht3xd_write_command(drv_data,
 		sht3xd_measure_cmd[SHT3XD_MPS_IDX][SHT3XD_REPEATABILITY_IDX])
 		< 0) {
-		SYS_LOG_DBG("Failed to set measurement mode!");
+		LOG_DBG("Failed to set measurement mode!");
 		return -EIO;
 	}
 
@@ -177,17 +186,16 @@ static int sht3xd_init(struct device *dev)
 
 #ifdef CONFIG_SHT3XD_TRIGGER
 	if (sht3xd_init_interrupt(dev) < 0) {
-		SYS_LOG_DBG("Failed to initialize interrupt");
+		LOG_DBG("Failed to initialize interrupt");
 		return -EIO;
 	}
 #endif
-
-	dev->driver_api = &sht3xd_driver_api;
 
 	return 0;
 }
 
 struct sht3xd_data sht3xd_driver;
 
-DEVICE_INIT(sht3xd, CONFIG_SHT3XD_NAME, sht3xd_init, &sht3xd_driver,
-	    NULL, POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY);
+DEVICE_AND_API_INIT(sht3xd, DT_SHT3XD_NAME, sht3xd_init, &sht3xd_driver,
+		    NULL, POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY,
+		    &sht3xd_driver_api);

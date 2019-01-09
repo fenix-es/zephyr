@@ -9,10 +9,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#if defined(CONFIG_NET_DEBUG_UTILS)
-#define SYS_LOG_DOMAIN "net/utils"
-#define NET_LOG_ENABLED 1
-#endif
+#include <logging/log.h>
+LOG_MODULE_REGISTER(net_utils, CONFIG_NET_UTILS_LOG_LEVEL);
 
 #include <stdlib.h>
 #include <zephyr/types.h>
@@ -23,6 +21,16 @@
 #include <net/net_ip.h>
 #include <net/net_pkt.h>
 #include <net/net_core.h>
+
+char *net_sprint_addr(sa_family_t af, const void *addr)
+{
+#define NBUFS 3
+	static char buf[NBUFS][NET_IPV6_ADDR_LEN];
+	static int i;
+	char *s = buf[++i % NBUFS];
+
+	return net_addr_ntop(af, addr, s, NET_IPV6_ADDR_LEN);
+}
 
 const char *net_proto2str(enum net_ip_protocol proto)
 {
@@ -70,17 +78,17 @@ char *net_sprint_ll_addr_buf(const u8_t *ll, u8_t ll_len,
 
 	switch (ll_len) {
 	case 8:
-		len = 8;
+		len = 8U;
 		break;
 	case 6:
-		len = 6;
+		len = 6U;
 		break;
 	default:
-		len = 6;
+		len = 6U;
 		break;
 	}
 
-	for (i = 0, blen = buflen; i < len && blen > 0; i++) {
+	for (i = 0U, blen = buflen; i < len && blen > 0; i++) {
 		ptr = net_byte_to_hex(ptr, (char)ll[i], 'A', true);
 		*ptr++ = ':';
 		blen -= 3;
@@ -101,7 +109,7 @@ static int net_value_to_udec(char *buf, u32_t value, int precision)
 	int temp;
 	char *start = buf;
 
-	divisor = 1000000000;
+	divisor = 1000000000U;
 	if (precision < 0)
 		precision = 1;
 	for (i = 9; i >= 0; i--, divisor /= 10) {
@@ -123,7 +131,7 @@ char *net_addr_ntop(sa_family_t family, const void *src,
 	struct in_addr *addr;
 	struct in6_addr *addr6;
 	u16_t *w;
-	u8_t i, bl, bh, longest = 1;
+	u8_t i, bl, bh, longest = 1U;
 	s8_t pos = -1;
 	char delim = ':';
 	unsigned char zeros[8] = { 0 };
@@ -137,7 +145,7 @@ char *net_addr_ntop(sa_family_t family, const void *src,
 		w = (u16_t *)addr6->s6_addr16;
 		len = 8;
 
-		for (i = 0; i < 8; i++) {
+		for (i = 0U; i < 8; i++) {
 			u8_t j;
 
 			for (j = i; j < 8; j++) {
@@ -149,7 +157,7 @@ char *net_addr_ntop(sa_family_t family, const void *src,
 			}
 		}
 
-		for (i = 0; i < 8; i++) {
+		for (i = 0U; i < 8; i++) {
 			if (zeros[i] > longest) {
 				longest = zeros[i];
 				pos = i;
@@ -168,7 +176,7 @@ char *net_addr_ntop(sa_family_t family, const void *src,
 		return NULL;
 	}
 
-	for (i = 0; i < len; i++) {
+	for (i = 0U; i < len; i++) {
 		/* IPv4 address a.b.c.d */
 		if (len == 4) {
 			u8_t l;
@@ -265,7 +273,7 @@ int net_addr_pton(sa_family_t family, const char *src,
 			}
 		}
 
-		memset(addr, 0, sizeof(struct in_addr));
+		(void)memset(addr, 0, sizeof(struct in_addr));
 
 		for (i = 0; i < sizeof(struct in_addr); i++) {
 			char *endptr;
@@ -309,11 +317,14 @@ int net_addr_pton(sa_family_t family, const char *src,
 				UNALIGNED_PUT(htons(strtol(src, NULL, 16)),
 					      &addr->s6_addr16[i]);
 				src = strchr(src, ':');
-				if (!src && i < expected_groups - 1) {
-					return -EINVAL;
+				if (src) {
+					src++;
+				} else {
+					if (i < expected_groups - 1) {
+						return -EINVAL;
+					}
 				}
 
-				src++;
 				continue;
 			}
 
@@ -344,6 +355,10 @@ int net_addr_pton(sa_family_t family, const char *src,
 				if (*tmp == ':') {
 					i--;
 				}
+
+				if (i < 0) {
+					return -EINVAL;
+				}
 			} while (tmp-- != src);
 
 			src++;
@@ -359,11 +374,13 @@ int net_addr_pton(sa_family_t family, const char *src,
 				addr->s6_addr[12 + i] = strtol(src, NULL, 10);
 
 				src = strchr(src, '.');
-				if (!src && i < 3) {
-					return -EINVAL;
+				if (src) {
+					src++;
+				} else {
+					if (i < 3) {
+						return -EINVAL;
+					}
 				}
-
-				src++;
 			}
 		}
 	} else {
@@ -453,13 +470,12 @@ static inline u16_t calc_chksum_pkt(u16_t sum, struct net_pkt *pkt,
 u16_t net_calc_chksum(struct net_pkt *pkt, u8_t proto)
 {
 	u16_t upper_layer_len;
-	u16_t sum = 0;
+	u16_t sum = 0U;
 
 	switch (net_pkt_family(pkt)) {
 #if defined(CONFIG_NET_IPV4)
 	case AF_INET:
-		upper_layer_len = (NET_IPV4_HDR(pkt)->len[0] << 8) +
-			NET_IPV4_HDR(pkt)->len[1] -
+		upper_layer_len = ntohs(NET_IPV4_HDR(pkt)->len) -
 			net_pkt_ipv6_ext_len(pkt) -
 			net_pkt_ip_hdr_len(pkt);
 
@@ -472,8 +488,8 @@ u16_t net_calc_chksum(struct net_pkt *pkt, u8_t proto)
 #endif
 #if defined(CONFIG_NET_IPV6)
 	case AF_INET6:
-		upper_layer_len = (NET_IPV6_HDR(pkt)->len[0] << 8) +
-			NET_IPV6_HDR(pkt)->len[1] - net_pkt_ipv6_ext_len(pkt);
+		upper_layer_len = ntohs(NET_IPV6_HDR(pkt)->len) -
+			net_pkt_ipv6_ext_len(pkt);
 		sum = calc_chksum(upper_layer_len + proto,
 				  (u8_t *)&NET_IPV6_HDR(pkt)->src,
 				  2 * sizeof(struct in6_addr));
@@ -488,7 +504,7 @@ u16_t net_calc_chksum(struct net_pkt *pkt, u8_t proto)
 
 	sum = (sum == 0) ? 0xffff : htons(sum);
 
-	return sum;
+	return ~sum;
 }
 
 #if defined(CONFIG_NET_IPV4)
@@ -500,7 +516,7 @@ u16_t net_calc_chksum_ipv4(struct net_pkt *pkt)
 
 	sum = (sum == 0) ? 0xffff : htons(sum);
 
-	return sum;
+	return ~sum;
 }
 #endif /* CONFIG_NET_IPV4 */
 
@@ -601,13 +617,13 @@ static bool parse_ipv6(const char *str, size_t str_len,
 		net_sin6(addr)->sin6_port = htons(port);
 
 		NET_DBG("IPv6 host %s port %d",
-			net_addr_ntop(AF_INET6, addr6,
-				      ipaddr, sizeof(ipaddr) - 1),
+			log_strdup(net_addr_ntop(AF_INET6, addr6,
+						 ipaddr, sizeof(ipaddr) - 1)),
 			port);
 	} else {
 		NET_DBG("IPv6 host %s",
-			net_addr_ntop(AF_INET6, addr6,
-				      ipaddr, sizeof(ipaddr) - 1));
+			log_strdup(net_addr_ntop(AF_INET6, addr6,
+						 ipaddr, sizeof(ipaddr) - 1)));
 	}
 
 	return true;
@@ -672,8 +688,8 @@ static bool parse_ipv4(const char *str, size_t str_len,
 	net_sin(addr)->sin_port = htons(port);
 
 	NET_DBG("IPv4 host %s port %d",
-		net_addr_ntop(AF_INET, addr4,
-			      ipaddr, sizeof(ipaddr) - 1),
+		log_strdup(net_addr_ntop(AF_INET, addr4,
+					 ipaddr, sizeof(ipaddr) - 1)),
 		port);
 	return true;
 }
@@ -729,4 +745,28 @@ bool net_ipaddr_parse(const char *str, size_t str_len, struct sockaddr *addr)
 #if defined(CONFIG_NET_IPV6) && !defined(CONFIG_NET_IPV4)
 	return parse_ipv6(str, str_len, addr, false);
 #endif
+}
+
+int net_bytes_from_str(u8_t *buf, int buf_len, const char *src)
+{
+	unsigned int i;
+	char *endptr;
+
+	for (i = 0U; i < strlen(src); i++) {
+		if (!(src[i] >= '0' && src[i] <= '9') &&
+		    !(src[i] >= 'A' && src[i] <= 'F') &&
+		    !(src[i] >= 'a' && src[i] <= 'f') &&
+		    src[i] != ':') {
+			return -EINVAL;
+		}
+	}
+
+	(void)memset(buf, 0, buf_len);
+
+	for (i = 0U; i < buf_len; i++) {
+		buf[i] = strtol(src, &endptr, 16);
+		src = ++endptr;
+	}
+
+	return 0;
 }

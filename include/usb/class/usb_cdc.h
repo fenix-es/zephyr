@@ -18,14 +18,11 @@
  * Header is limited to ACM and ECM Subclasses.
  */
 
-#ifndef __USB_CDC_H__
-#define __USB_CDC_H__
+#ifndef ZEPHYR_INCLUDE_USB_CLASS_USB_CDC_H_
+#define ZEPHYR_INCLUDE_USB_CLASS_USB_CDC_H_
 
 /** CDC Specification release number in BCD format */
 #define CDC_SRN_1_20			0x0120
-
-/** CDC Class Code */
-#define COMMUNICATION_DEVICE_CLASS	0x02
 
 /** Communications Class Subclass Codes */
 #define ACM_SUBCLASS			0x02
@@ -65,6 +62,8 @@
  * for ACM devices
  * @note PSTN120.pdf, 6.3, Table 13
  */
+#define CDC_SEND_ENC_CMD		0x00
+#define CDC_GET_ENC_RSP			0x01
 #define SET_LINE_CODING			0x20
 #define GET_LINE_CODING			0x21
 #define SET_CONTROL_LINE_STATE		0x22
@@ -163,4 +162,4 @@ struct cdc_ecm_descriptor {
 	u8_t bNumberPowerFilters;
 } __packed;
 
-#endif /* __USB_CDC_H__ */
+#endif /* ZEPHYR_INCLUDE_USB_CLASS_USB_CDC_H_ */

@@ -20,9 +20,9 @@
 	     "|%5u|%5u|%10.3f|%10.3f|%10.3f|%10.3f|%10.3f|%10.3f|\n",     \
 	     putsize, putsize, puttime[0] / 1000.0, puttime[1] / 1000.0,  \
 	     puttime[2] / 1000.0,                                         \
-	     (1000.0 * putsize) / puttime[0],                             \
-	     (1000.0 * putsize) / puttime[1],                             \
-	     (1000.0 * putsize) / puttime[2])
+	     (1000.0 * putsize) / SAFE_DIVISOR(puttime[0]),               \
+	     (1000.0 * putsize) / SAFE_DIVISOR(puttime[1]),               \
+	     (1000.0 * putsize) / SAFE_DIVISOR(puttime[2]))
 
 #define PRINT_1_TO_N_HEADER()                                             \
 	do { \
@@ -39,9 +39,9 @@
 	     puttime[0] / 1000.0,                                     \
 	     puttime[1] / 1000.0,                                     \
 	     puttime[2] / 1000.0,                                     \
-	     (1000.0 * putsize) / puttime[0],                         \
-	     (1000.0 * putsize) / puttime[1],                         \
-	     (1000.0 * putsize) / puttime[2])
+	     (1000.0 * putsize) / SAFE_DIVISOR(puttime[0]),           \
+	     (1000.0 * putsize) / SAFE_DIVISOR(puttime[1]),           \
+	     (1000.0 * putsize) / SAFE_DIVISOR(puttime[2]))
 
 #else
 #define PRINT_ALL_TO_N_HEADER_UNIT()                                       \
@@ -53,9 +53,9 @@
 	     "|%5u|%5u|%10u|%10u|%10u|%10u|%10u|%10u|\n",                 \
 	     putsize, putsize, puttime[0], puttime[1],                    \
 	     puttime[2],                                                  \
-	     (1000000 * putsize) / puttime[0],                            \
-	     (1000000 * putsize) / puttime[1],                            \
-	     (1000000 * putsize) / puttime[2])
+	     (1000000 * putsize) / SAFE_DIVISOR(puttime[0]),              \
+	     (1000000 * putsize) / SAFE_DIVISOR(puttime[1]),              \
+	     (1000000 * putsize) / SAFE_DIVISOR(puttime[2]))
 
 #define PRINT_1_TO_N_HEADER()                                             \
 	do { \
@@ -72,9 +72,9 @@
 	     puttime[0],                                             \
 	     puttime[1],                                             \
 	     puttime[2],                                             \
-	     (u32_t)((1000000 * (u64_t)putsize) / puttime[0]), \
-	     (u32_t)((1000000 * (u64_t)putsize) / puttime[1]), \
-	     (u32_t)((1000000 * (u64_t)putsize) / puttime[2]))
+	     (u32_t)((1000000 * (u64_t)putsize) / SAFE_DIVISOR(puttime[0])), \
+	     (u32_t)((1000000 * (u64_t)putsize) / SAFE_DIVISOR(puttime[1])), \
+	     (u32_t)((1000000 * (u64_t)putsize) / SAFE_DIVISOR(puttime[2])))
 #endif /* FLOAT */
 
 /*
@@ -129,7 +129,7 @@ void pipe_test(void)
 			 "  no buf  | small buf| big buf  |\n", output_file);
 	PRINT_STRING(dashline, output_file);
 
-	for (putsize = 8; putsize <= MESSAGE_SIZE_PIPE; putsize <<= 1) {
+	for (putsize = 8U; putsize <= MESSAGE_SIZE_PIPE; putsize <<= 1) {
 		for (pipe = 0; pipe < 3; pipe++) {
 			putcount = NR_OF_PIPE_RUNS;
 			pipeput(test_pipes[pipe], _ALL_N, putsize, putcount,
@@ -163,7 +163,7 @@ void pipe_test(void)
 			 "no buf  | small buf| big buf  |\n", output_file);
 		PRINT_STRING(dashline, output_file);
 
-	for (putsize = 8; putsize <= (MESSAGE_SIZE_PIPE); putsize <<= 1) {
+	for (putsize = 8U; putsize <= (MESSAGE_SIZE_PIPE); putsize <<= 1) {
 		putcount = MESSAGE_SIZE_PIPE / putsize;
 		for (pipe = 0; pipe < 3; pipe++) {
 			pipeput(test_pipes[pipe], _1_TO_N, putsize,
